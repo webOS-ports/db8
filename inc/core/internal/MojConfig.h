@@ -22,7 +22,7 @@
 
 // arch
 #if !(defined(MOJ_ARM) || defined(MOJ_X86))
-#	if (__arm__)
+#	if (__arm__) || (__aarch64__)
 #		define MOJ_ARM
 #	elif (__i386__ || __x86_64__)
 #		define MOJ_X86
