@@ -245,3 +245,7 @@ endif()
 
 add_subdirectory(test/performance)
 add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure ${ctest_args})
+
+# install the script file
+webos_configure_source_files(DB8-MAINDB files/scripts/db8-maindb.sh)
+install(PROGRAMS ${DB8-MAINDB} DESTINATION ${WEBOS_INSTALL_SBINDIR})
