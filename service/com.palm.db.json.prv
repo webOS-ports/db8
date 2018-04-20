@@ -1,24 +1,24 @@
 {
     "role": {
-        "exeName":"/usr/bin/mojodb-luna",
+        "exeName":"@WEBOS_INSTALL_SBINDIR@/mojodb-luna",
         "type": "regular",
-        "allowedNames": ["com.palm.db","com.palm.tempdb","com.webos.mediadb"]
+        "allowedNames": ["com.palm.db","com.palm.tempdb","com.webos.mediadb", "com.palm.mojodbclient"]
     },
     "permissions": [
         {
             "service":"com.palm.db",
             "inbound":["*"],
-            "outbound":["com.palm.service.backup","com.palm.systemservice","com.palm.systemmanager","com.palm.activitymanager"]
+            "outbound":["com.palm.service.backup","com.palm.systemservice","com.palm.systemmanager","com.palm.activitymanager", "com.webos.service.attachedstoragemanager","com.webos.service.tv.systemproperty"]
         },
         {
             "service":"com.palm.tempdb",
             "inbound":["*"],
-            "outbound":[]
+            "outbound":["com.palm.activitymanager", "com.palm.systemservice","com.palm.systemmanager", "com.webos.service.attachedstoragemanager"]
         },
         {
             "service":"com.webos.mediadb",
             "inbound":["*"],
-            "outbound":[]
+            "outbound":["com.palm.activitymanager","com.palm.systemservice","com.palm.systemmanager", "com.webos.service.attachedstoragemanager"]
         }
     ]
 }
