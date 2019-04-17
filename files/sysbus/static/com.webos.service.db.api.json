@@ -82,48 +82,6 @@
     "com.palm.tempdb/putQuotas",
     "com.palm.tempdb/quotaStats"
     ],
-    "epgdatabase.operation":[
-    "com.webos.epgdb/batch",
-    "com.webos.epgdb/del",
-    "com.webos.epgdb/delKind",
-    "com.webos.epgdb/find",
-    "com.webos.epgdb/get",
-    "com.webos.epgdb/merge",
-    "com.webos.epgdb/mergePut",
-    "com.webos.epgdb/purgeStatus",
-    "com.webos.epgdb/put",
-    "com.webos.epgdb/putKind",
-    "com.webos.epgdb/putPermissions",
-    "com.webos.epgdb/purge",
-    "com.webos.epgdb/reserveIds",
-    "com.webos.epgdb/search",
-    "com.webos.epgdb/watch",
-    "com.webos.epgdb/removeAppData",
-    "com.webos.epgdb/listActiveMedia",
-    "com.webos.epgdb/setShardMode",
-    "com.webos.epgdb/shardInfo",
-    "com.webos.epgdb/shardKind"
-    ],
-    "epgdatabase.profiling":[
-    "com.webos.epgdb/getProfile",
-    "com.webos.epgdb/profile",
-    "com.webos.epgdb/stats"
-    ],
-    "epgdatabase.management":[
-    "com.webos.epgdb/compact",
-    "com.webos.epgdb/dump",
-    "com.webos.epgdb/internal/postBackup",
-    "com.webos.epgdb/internal/postRestore",
-    "com.webos.epgdb/internal/preBackup",
-    "com.webos.epgdb/internal/preRestore",
-    "com.webos.epgdb/internal/scheduledPurge",
-    "com.webos.epgdb/internal/scheduledSpaceCheck",
-    "com.webos.epgdb/internal/spaceCheck",
-    "com.webos.epgdb/internal/releaseAdminProfile",
-    "com.webos.epgdb/load",
-    "com.webos.epgdb/putQuotas",
-    "com.webos.epgdb/quotaStats"
-    ],
     "mediadatabase.operation":[
     "com.webos.mediadb/batch",
     "com.webos.mediadb/del",
