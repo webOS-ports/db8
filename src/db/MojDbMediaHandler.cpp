@@ -117,8 +117,10 @@ MojErr MojDbMediaHandler::subscribe(MojService &service)
         LOG_DEBUG("[db-luna_shard] sendUnRegister return error. Ignore it");
     }
 
+    /* FIXME Disable ASM for now on LuneOS since we don't have PDM/com.webos.service.attachedstoragemanager yet
     err = m_deviceList.subscribe(m_service, MojDbServiceDefs::ASMServiceName, MojDbServiceDefs::ASMListDeviceMethod);
     MojErrCheck(err);
+	*/
 
     MojObject payload;
     err = payload.putString(_T("name"), m_serviceName);
@@ -131,8 +133,10 @@ MojErr MojDbMediaHandler::subscribe(MojService &service)
     err = payload.put(_T("deviceType"), deviceTypes);
     MojErrCheck(err);
 
+    /* FIXME Disable ASM for now on LuneOS since we don't have PDM/com.webos.service.attachedstoragemanager yet
     err = m_deviceRegister.subscribe(m_service, MojDbServiceDefs::ASMServiceName, MojDbServiceDefs::ASMRegisterDeviceStatusMethod, &payload);
     MojErrCheck(err);
+    */
 
     return MojErrNone;
 }
@@ -342,8 +346,10 @@ MojErr MojDbMediaHandler::sendRelease(const MojString &deviceId, const MojString
     err = payload.putBool(_T("isUsing"), (errCode == MojErrNone) ? false : true);
     MojErrCheck(err);
 
+    /* FIXME Disable ASM for now on LuneOS since we don't have PDM/com.webos.service.attachedstoragemanager yet
     err = m_deviceRelease.send(m_service, MojDbServiceDefs::ASMServiceName, MojDbServiceDefs::ASMResponseDeviceStatusMethod, &payload);
     MojErrCheck(err);
+    */
 
     return MojErrNone;
 }
@@ -358,8 +364,10 @@ MojErr MojDbMediaHandler::sendUnRegister()
     err = payload.putString(_T("name"), m_serviceName);
     MojErrCheck(err);
 
+    /* FIXME Disable ASM for now on LuneOS since we don't have PDM/com.webos.service.attachedstoragemanager yet
     err = m_deviceUnregister.send(m_service, MojDbServiceDefs::ASMServiceName, MojDbServiceDefs::ASMUnRegisterDeviceStatusMethod, &payload);
     MojErrCheck(err);
+    */
 
     return MojErrNone;
 }
