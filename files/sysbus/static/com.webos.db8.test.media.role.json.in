@@ -5,7 +5,7 @@
     "permissions": [
         {
             "service":"com.webos.db8.test.media",
-            "outbound":["*"]
+            "outbound":["com.webos.service.attachedstoragemanager"]
         }
     ]
 }
