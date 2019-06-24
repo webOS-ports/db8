@@ -17,7 +17,8 @@
 			{"type":"db.role","object":"admin","caller":"com.palm.service.backup","operations":{"*":"allow"}},
 			{"type":"db.role","object":"admin","caller":"com.palm.odd.service","operations":{"*":"allow"}},
 			{"type":"db.role","object":"admin","caller":"com.palm.service.migrationscript","operations":{"*":"allow"}},
-			{"type":"db.role","object":"admin","caller":"com.palm.spacecadet","operations":{"*":"allow"}}
+			{"type":"db.role","object":"admin","caller":"com.palm.spacecadet","operations":{"*":"allow"}},
+			{"type":"db.role","object":"admin","caller":"com.webos.service.attachedstoragemanager","operations":{"*":"allow"}}
 		],
 		"quotas" : [
 			{"owner":"*","size":10485760},
