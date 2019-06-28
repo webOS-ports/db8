@@ -22,4 +22,5 @@ After=db8-maindb.service db8-mediadb.service db8-tempdb.service
 [Service]
 Type=oneshot
 ExecStart=/bin/true
+ExecStartPost=/usr/bin/PmLogCtl set DB8 debug
 RemainAfterExit=yes
