@@ -61,7 +61,6 @@
         "com.webos.mediadb/shardKind",
         "com.webos.mediadb/watch"
     ],
-
     "database.internal": [
         "com.palm.db/batch",
         "com.palm.db/compact",
