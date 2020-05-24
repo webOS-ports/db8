@@ -1,5 +1,5 @@
 {
-    "com.palm.db": ["activities.manage", "settings", "devices", "applications", "applications.internal", "services"],
-    "com.palm.tempdb": ["activities.manage", "settings", "devices", "applications", "applications.internal", "services"],
-    "com.webos.mediadb": ["activities.manage", "settings", "devices", "applications", "applications.internal", "services"]
+    "com.palm.db": ["activities.manage", "settings", "devices", "applications", "applications.internal", "services", "database.internal"],
+    "com.palm.tempdb": ["activities.manage", "settings", "devices", "applications", "applications.internal", "services", "database.internal"],
+    "com.webos.mediadb": ["activities.manage", "settings", "devices", "applications", "applications.internal", "services", "database.internal"]
 }
