@@ -131,6 +131,13 @@ MojErr MojDbServiceHandlerInternal::handlePostBackup(MojServiceMessage* msg, Moj
 MojErr MojDbServiceHandlerInternal::handlePostRestore(MojServiceMessage* msg, MojObject& payload, MojDbReq& req)
 {
     LOG_TRACE("Entering function %s", __FUNCTION__);
+	// The backup/restore callbacks are the platform's own backup protocol
+	// (registered via /etc/palm/backup) and are already gated on the
+	// database.management ACG group by the hub. MojDbServiceHandlerBase
+	// always builds a non-admin MojDbReq, so without this guard
+	// MojDb::dump()/put() reject every bus caller and the API is dead code.
+	MojDbAdminGuard adminGuard(req);
+
 	MojAssert(msg);
 
 	MojString dir;
@@ -163,6 +170,13 @@ MojErr MojDbServiceHandlerInternal::handlePostRestore(MojServiceMessage* msg, Mo
 MojErr MojDbServiceHandlerInternal::handlePreBackup(MojServiceMessage* msg, MojObject& payload, MojDbReq& req)
 {
     LOG_TRACE("Entering function %s", __FUNCTION__);
+	// The backup/restore callbacks are the platform's own backup protocol
+	// (registered via /etc/palm/backup) and are already gated on the
+	// database.management ACG group by the hub. MojDbServiceHandlerBase
+	// always builds a non-admin MojDbReq, so without this guard
+	// MojDb::dump()/put() reject every bus caller and the API is dead code.
+	MojDbAdminGuard adminGuard(req);
+
 	MojAssert(msg);
 
 	MojErr err;
