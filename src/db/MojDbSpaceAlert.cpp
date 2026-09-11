@@ -245,8 +245,11 @@ MojErr MojDbSpaceAlert::SpaceCheckHandler::handleCancel(MojServiceMessage* msg)
         }
     }
 
-    MojAssert(!isFound);
-    m_parent->m_spaceCheckHandlers.erase(index);
+    MojAssert(isFound);
+    if (isFound) {
+        MojErr err = m_parent->m_spaceCheckHandlers.erase(index);
+        MojErrCheck(err);
+    }
 
     return MojErrNone;
 }

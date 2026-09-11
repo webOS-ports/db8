@@ -86,6 +86,7 @@ private:
     MojDbQuery::Page m_page;
     MojUInt32 m_count;
     MojThreadMutex m_items_mutex;
+    MojErr m_workerErr { MojErrNone };
 };
 
 #endif // WITH_SEARCH_QUERY_CACHE

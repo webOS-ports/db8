@@ -40,13 +40,11 @@ static const MojChar* const ShardInfoKind1Str =
                     ]}");
 
 MojDbShardEngine::MojDbShardEngine(MojDb& db)
-  :
-#ifdef LMDB_ENGINE_SUPPORT
-    m_db(db),
+  : m_db(db),
+    m_databasePrefixIsAbsolute(false),
+    m_reqFreePartSpaceBytes(0),
+    m_reqFreePartSpacePercantage(0.0f),
     m_enable(false)
-#else
-    m_db(db)
-#endif
 {
 }
 
@@ -496,7 +494,7 @@ MojErr MojDbShardEngine::allocateId (const MojString& deviceUuid, MojUInt32& sha
             computeId(modified_uuid, calc_id); //next iteration
         }
     }
-    while (!found);
+    while (found);
 
     return MojErrNone;
 }

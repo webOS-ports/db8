@@ -91,4 +91,5 @@ private:
     MojDbSearchCache::QueryKey m_queryKey;
     MojDbQuery m_cacheQuery;
     MojThreadMutex m_items_mutex;
+    MojErr m_workerErr { MojErrNone };
 };

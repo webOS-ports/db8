@@ -1057,7 +1057,7 @@ MojErr MojDbKind::removeKind(KindVec& vec, MojDbKind* kind)
 
 	MojSize idx = vec.find(kind);
 	MojAssert(idx != MojInvalidIndex);
-        if (idx == MojInvalidKindIndex)
+	if (idx == MojInvalidIndex)
 	{
 		return MojErrNotFound;
 	}
