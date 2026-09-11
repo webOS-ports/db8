@@ -927,7 +927,7 @@ MojErr MojDbIndexTest::assertContains(TestIndex& ti, MojObject id, const MojChar
 	MojObject array;
 	MojErr err = array.fromJson(json);
 	MojTestErrCheck(err);
-	MojObjectWriter(writer);
+	MojObjectWriter writer;
 	MojObject val;
 	MojSize idx = 0;
 	while (array.at(idx++, val)) {

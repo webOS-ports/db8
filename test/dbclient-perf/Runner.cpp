@@ -117,7 +117,8 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
     if (!prefix[0]) {
-        strncpy(prefix, ".", sizeof("."));
+        prefix[0] = '.';
+        prefix[1] = '\0';
     }
 
     snprintf(test_folder_tmp, NAME_MAX, "%s/dbclient-perf-test-dir-XXXXXX", prefix);

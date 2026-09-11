@@ -103,8 +103,8 @@ int main (int argc, const char** argv)
 	po::notify(vm);
 
 	std::string outdir = ".";
-	size_t maxobjects;
-	size_t paralelThreads;
+	size_t maxobjects = 204800 + 1;
+	size_t paralelThreads = 10;
 
 	if (vm.count("help")) {
 		std::cout << desc << "\n";

@@ -80,9 +80,9 @@ int main (int argc, const char** argv)
 	MojErr err;
 	boost::filesystem::path datasetPath = "dbs";
 	boost::filesystem::path reportsPath = "reports";
-	size_t repeats;
-	size_t samples;
-	size_t clientCount;
+	size_t repeats = 100;
+	size_t samples = 1000;
+	size_t clientCount = 1;
 
 	// Declare the supported options.
 	po::options_description desc("Allowed options");
