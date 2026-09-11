@@ -242,12 +242,6 @@ MojErr MojDbLevelEngine::openDatabase(const MojChar* name, MojDbStorageTxn* txn,
     MojErr err = db->open(name, this, created, txn);
     MojErrCheck(err);
 
-    if (m_dbs.find(db) == MojInvalidIndex) {
-        m_dbs.push(db);
-
-        return MojErrDbFatal;
-    }
-
     dbOut = db;
 
     return MojErrNone;
@@ -266,7 +260,10 @@ MojErr MojDbLevelEngine::openSequence(const MojChar* name, MojDbStorageTxn* txn,
     MojErr err = seq->open(name, m_seqDb.get());
     MojErrCheck(err);
     seqOut = seq;
-    m_seqs.push(seq);
+
+    MojThreadGuard guard(m_dbMutex);
+    err = m_seqs.push(seq);
+    MojErrCheck(err);
 
     return MojErrNone;
 }

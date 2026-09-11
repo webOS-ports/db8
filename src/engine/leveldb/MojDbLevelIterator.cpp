@@ -32,9 +32,7 @@ MojDbLevelIterator::MojDbLevelIterator (database_t* database)
 MojDbLevelIterator::~MojDbLevelIterator()
 {
     delete m_it;
-#ifdef MOJ_DEBUG
     m_it = 0;
-#endif
 }
 
 MojDbLevelIterator& MojDbLevelIterator::operator++ ()
@@ -83,14 +81,12 @@ MojDbLevelIterator& MojDbLevelIterator::operator-- ()
 void MojDbLevelIterator::save()
 {
     if (m_it->Valid())
-        savedKey = m_it->key();
+        savedKey = m_it->key().ToString();
     else
         savedKey.clear();
 
     delete m_it;
-#ifdef MOJ_DEBUG
     m_it = 0;
-#endif
 }
 
 void MojDbLevelIterator::restore()
@@ -98,7 +94,7 @@ void MojDbLevelIterator::restore()
     m_it = m_database->NewIterator(MojDbLevelEngine::getReadOptions());
 
     if (!savedKey.empty())
-        seek(savedKey.ToString());
+        seek(savedKey);
 }
 
 void MojDbLevelIterator::seek(const std::string& key)

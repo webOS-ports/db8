@@ -26,6 +26,7 @@ const MojUInt32 MojDbLevelQuery::SeekEmptyFlags[2] = {MojDbLevelCursor::e_First,
 const MojUInt32 MojDbLevelQuery::NextFlags[2] = {MojDbLevelCursor::e_Next, MojDbLevelCursor::e_Prev};
 
 MojDbLevelQuery::MojDbLevelQuery()
+: m_db(NULL)
 {
 }
 
