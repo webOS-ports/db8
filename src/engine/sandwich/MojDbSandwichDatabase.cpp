@@ -388,6 +388,7 @@ MojErr MojDbSandwichDatabase::delPrefix(MojDbSandwichEnvTxn &txn, leveldb::Slice
 
     mojo::SandwichTxn::Part part;
     MojErr err = txn.useShard(m_cookie, shardId, part);
+    MojErrCheck(err);
     auto it = part.NewIterator();
 
     it->Seek(prefix);
@@ -396,7 +397,7 @@ MojErr MojDbSandwichDatabase::delPrefix(MojDbSandwichEnvTxn &txn, leveldb::Slice
         auto key = it->key();
 
         size_t delSize = key.size() + it->value().size();
-        MojErr err = txn.offsetQuota(-(MojInt64) delSize);
+        err = txn.offsetQuota(-(MojInt64) delSize);
         MojErrCheck(err);
 
         auto s = part.Delete(key);

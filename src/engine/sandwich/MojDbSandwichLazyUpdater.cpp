@@ -34,12 +34,20 @@ MojErr MojDbSandwichLazyUpdater::start()
 {
     MojErr err = MojErrNone;
 
+    // a previous stop()/deinit() may have ended the worker: join it so the
+    // thread can be recreated instead of silently never running again
+    if (MojInvalidThread != m_thread && m_stop.load())
+    {
+        MojErr threadErr = MojErrNone;
+        (void) MojThreadJoin(m_thread, threadErr);
+        m_thread = MojInvalidThread;
+    }
+    m_stop.store(false);
     if (MojInvalidThread == m_thread)
     {
         err = MojThreadCreate(m_thread, &threadMain, this);
         MojErrCheck(err);
     }
-    m_stop = false;
 
     return (err);
 }
@@ -48,7 +56,7 @@ MojErr MojDbSandwichLazyUpdater::stop()
 {
     MojErr err = MojErrNone;
 
-    m_stop = true;
+    m_stop.store(true);
     return (err);
 }
 
@@ -61,6 +69,7 @@ MojErr MojDbSandwichLazyUpdater::deinit()
     {
         MojErr threadErr = MojErrNone;
         MojErr joinErr = MojThreadJoin(m_thread, threadErr);
+        m_thread = MojInvalidThread;
 
         MojErrAccumulate(err, threadErr);
         MojErrAccumulate(err, joinErr);
@@ -74,7 +83,7 @@ MojErr MojDbSandwichLazyUpdater::threadMain(void* arg)
     MojDbSandwichLazyUpdater* thiz_class = (MojDbSandwichLazyUpdater*) arg;
     MojAssert(thiz_class);
 
-    while (thiz_class->m_stop == false) {
+    while (!thiz_class->m_stop.load()) {
         thiz_class->sync();
         MojSleep(UpdaterIntervalMsec * 1000);
     }

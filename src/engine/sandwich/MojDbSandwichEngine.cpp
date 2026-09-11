@@ -373,7 +373,10 @@ MojErr MojDbSandwichEngine::openSequence(const MojChar* name, MojDbStorageTxn* t
     MojErr err = seq->open(name, m_seqDb.get());
     MojErrCheck(err);
     seqOut = seq;
-    m_seqs.push(seq);
+
+    MojThreadGuard guard(m_dbMutex);
+    err = m_seqs.push(seq);
+    MojErrCheck(err);
 
     return MojErrNone;
 }

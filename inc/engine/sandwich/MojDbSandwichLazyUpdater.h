@@ -18,6 +18,7 @@
 #define MOJDBLEVELDATABASELAZYUPDATER_H
 
 #include <map>
+#include <atomic>
 
 #include <leveldb/db.h>
 #include "db/MojDbDefs.h"
@@ -50,7 +51,7 @@ private:
 
     MojThreadT m_thread;
     mutable MojThreadMutex m_mutex;
-    bool m_stop;
+    std::atomic<bool> m_stop;
 
     Container m_dbs;
 };
