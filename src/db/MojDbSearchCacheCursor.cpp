@@ -23,12 +23,12 @@
 
 MojDbSearchCursor::MojDbSearchCursor(const MojString& localeStr)
 : m_limit(0),
-  m_pos(nullptr),
-  m_locale(localeStr),
   m_startPos(0),
-  m_count(0),
+  m_pos(nullptr),
+  m_limitPos(nullptr),
+  m_locale(localeStr),
   m_collation(MojDbCollationInvalid),
-  m_limitPos(nullptr)
+  m_count(0)
 {
 }
 
@@ -108,7 +108,7 @@ MojErr MojDbSearchCursor::setPagePosition()
         const MojObject id = item->id();
         // If match, set begin/last position and next page
         if(pageKey.compare(id) == 0) {
-            if (m_limit >= (last-m_pos)) {
+            if (last - m_pos >= 0 && m_limit >= static_cast<MojUInt32>(last - m_pos)) {
                 m_limitPos = m_items.end();
                 m_page.clear();
             } else {

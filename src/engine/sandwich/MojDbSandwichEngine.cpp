@@ -137,8 +137,8 @@ MojErr MojDbSandwichEngine::configure(const MojObject& config)
 
     // cache option
     MojInt64 cacheSize = 0L;
-    if (config.get("cacheSize", cacheSize)) {
-        OpenOptions.block_cache = leveldb::NewLRUCache(cacheSize);
+    if (config.get("cacheSize", cacheSize) && cacheSize > 0) {
+        OpenOptions.block_cache = leveldb::NewLRUCache(static_cast<size_t>(cacheSize));
     }
 
     return MojErrNone;

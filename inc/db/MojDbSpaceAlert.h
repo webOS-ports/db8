@@ -27,6 +27,8 @@ class MojDbSpaceAlert
     class SpaceCheckHandler : public MojSignalHandler
     {
     public:
+        using MojSignalHandler::handleCancel;
+
         SpaceCheckHandler(MojDbSpaceAlert* parent, MojServiceMessage* msg);
         ~SpaceCheckHandler();
 

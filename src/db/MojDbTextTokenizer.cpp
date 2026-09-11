@@ -55,10 +55,8 @@ MojErr MojDbTextTokenizer::tokenize(const MojString& text, MojDbTextCollator* co
 	MojErrCheck(err);
 
 	// clone break iterator and set text
-	MojByte buf[U_BRK_SAFECLONE_BUFFERSIZE];
 	UErrorCode status = U_ZERO_ERROR;
-	MojInt32 size = sizeof(buf);
-	IterPtr ubrk(ubrk_safeClone(m_ubrk.get(), buf, &size, &status));
+	IterPtr ubrk(ubrk_clone(m_ubrk.get(), &status));
 	MojUnicodeErrCheck(status);
 	MojAssert(ubrk.get());
 	ubrk_setText(ubrk.get(), unicodeStr.begin(), (MojInt32) unicodeStr.size(), &status);

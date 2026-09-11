@@ -88,6 +88,8 @@ public:
 	class EchoCancelHdlr : public MojSignalHandler
 	{
 	public:
+		using MojSignalHandler::handleCancel;
+
 		EchoCancelHdlr(MojUInt32& cCancellableEchos)
 		: m_cCancellableEchos(cCancellableEchos), m_slot(this, &EchoCancelHdlr::handleCancel) {}
 

@@ -40,7 +40,7 @@ MojErr generateDatabase(size_t count, const char * outputFile)
     for (MojSize i = 0; i < count; ++i) {
         MojObject obj;
         MojString entry;
-        entry.format(_T("{\"_id\":%lu,\"_kind\":\"LunaDbClientTest:1\",\"foo\":\"test_foo\",\"bar\":\"test_bar\"}"), i + 1);
+        entry.format(_T("{\"_id\":%llu,\"_kind\":\"LunaDbClientTest:1\",\"foo\":\"test_foo\",\"bar\":\"test_bar\"}"), (unsigned long long)(i + 1));
         err = obj.fromJson(entry);
         MojErrCheck(err);
         err = db.put(obj);

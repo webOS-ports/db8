@@ -287,8 +287,9 @@ MojErr MojDbServiceHandler::handleDelKind(MojServiceMessage* msg, MojObject& pay
 	err = m_db.delKind(id, found, MojDbFlagNone, req);
 	MojErrCheck(err);
 
-    if (!found)
+    if (!found) {
 	MojErrThrow(MojErrDbKindNotRegistered);
+    }
 	err = msg->replySuccess();
 	MojErrCheck(err);
 
@@ -943,8 +944,9 @@ MojErr MojDbServiceHandler::handleShardKind(MojServiceMessage* msg, MojObject& p
     MojAssert(msg);
     MojErr err;
 
-    if (!m_db.shardEngine()->enabled())
+    if (!m_db.shardEngine()->enabled()) {
         MojErrThrow(MojErrDbShardsDisabled);
+    }
 
 	LOG_WARNING(MSGID_MOJ_SERVICE_WARNING,
 	            0,

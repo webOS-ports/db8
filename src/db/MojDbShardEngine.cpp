@@ -133,7 +133,8 @@ MojErr MojDbShardEngine::configure(const MojObject& conf)
     err = conf.getRequired(_T("device_minimum_free_bytes"), val);
     MojErrCheck(err);
 
-    m_reqFreePartSpaceBytes = val.intValue();
+    MojInt64 reqFreeBytes = val.intValue();
+    m_reqFreePartSpaceBytes = (reqFreeBytes > 0) ? static_cast<unsigned long>(reqFreeBytes) : 0;
 
     if (conf.get(_T("device_minimum_free_percentage"), val)) {
         MojDecimal dec = val.decimalValue();

@@ -51,7 +51,7 @@ MojErr metric_ProcessNObjects(const Suite& suite, const boost::filesystem::path&
 		MojErrCheck(err);
 	}
 
-	MojUInt32 dataset = std::atol(dbpath.filename().c_str());
+	MojUInt32 dataset = static_cast<MojUInt32>(std::atol(dbpath.filename().c_str()));
 	results->insert(std::make_pair(dataset, std::move(durations)));
 
 	err = db->close();

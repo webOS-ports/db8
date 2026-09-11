@@ -89,6 +89,7 @@ public:
 	MojAutoPtr(MojAutoPtr<P>& ap) : Base(ap.release()) {}
 
 	T& operator*() const { MojAssert(Base::m_p); return *Base::m_p; }
+	MojAutoPtr& operator=(MojAutoPtr& ap) { this->reset(ap.release()); return *this; }
 	template<class P>
 	MojAutoPtr& operator=(MojAutoPtr<P>& ap) { this->reset(ap.release()); return *this; }
 	template<class P>
@@ -109,6 +110,7 @@ public:
 	explicit MojAutoArrayPtr(T* p = NULL) : Base(p) {}
 	MojAutoArrayPtr(MojAutoArrayPtr& ap) : Base(ap) {}
 	MojAutoArrayPtr(MojAutoPtrRef<T, MojArrayDeleteDtor<T> > ref) : Base(ref) {}
+	MojAutoArrayPtr& operator=(MojAutoArrayPtr& ap) = default;
 
 	T& operator*() const { MojAssert(Base::m_p); return *Base::m_p; }
 	T& operator[](MojSize idx) { return Base::m_p[idx]; }
@@ -220,6 +222,7 @@ public:
 	template<class P>
 	MojSharedPtr(const MojSharedPtr<P>& sp) : Base(reinterpret_cast<const MojSharedPtr<T>&>(sp)) { testAssignable((P*) NULL); }
 
+	MojSharedPtr& operator=(const MojSharedPtr& sp) = default;
 	template<class P>
 	MojSharedPtr& operator=(const MojSharedPtr<P>& rhs) { testAssignable((P*) NULL); return operator=(reinterpret_cast<const MojSharedPtr&>(rhs)); }
 private:
@@ -234,6 +237,7 @@ public:
 	MojSharedArrayPtr() : Base() {}
 	MojSharedArrayPtr(const MojSharedArrayPtr& sp) : Base(sp) {}
 	MojSharedArrayPtr(MojSharedPtrRef<T, MojArrayDeleteDtor<T> > ref) : Base(ref) {}
+	MojSharedArrayPtr& operator=(const MojSharedArrayPtr& sp) = default;
 };
 
 template<class T>
@@ -244,6 +248,7 @@ public:
 	MojSharedFreePtr() : Base() {}
 	MojSharedFreePtr(const MojSharedFreePtr& sp) : Base(sp) {}
 	MojSharedFreePtr(MojSharedPtrRef<T, MojFreeDtor> ref) : Base(ref) {}
+	MojSharedFreePtr& operator=(const MojSharedFreePtr& sp) = default;
 };
 
 #include "core/internal/MojAutoPtrInternal.h"

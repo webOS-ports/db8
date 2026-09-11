@@ -391,8 +391,9 @@ MojErr MojDb::delKind(const MojObject& id, bool& foundOut, MojUInt32 flags, MojD
             "delKind_error: 'kind' has 'subkinds' subkinds");
 		MojErrThrow(MojErrDbKindHasSubKinds);
 	}
-    else
+    else {
         LOG_DEBUG("[db_mojodb] delKind: %s", idStr.data());
+    }
 
 	err = kindEngine()->checkOwnerPermission(idStr, req);
 	MojErrCheck(err);

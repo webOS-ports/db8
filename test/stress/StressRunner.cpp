@@ -106,7 +106,7 @@ void writerThread(Shared* shp, unsigned tid)
     int64_t live = 0;
 
     while (!sh.stop.load(std::memory_order_relaxed)) {
-        unsigned action = rng() % 100;
+        unsigned action = static_cast<unsigned>(rng() % 100);
         // below the target window, always grow; at the window put/update/delete
         // are balanced so the live set stays stable for endurance runs
         if (ids.size() < sh.opts.objects || action < 33) {

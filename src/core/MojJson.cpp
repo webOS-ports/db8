@@ -492,6 +492,7 @@ Redo:	switch (state()) {
 			case 'e':
 			case 'E':
 				m_isDecimal = true;
+				[[fallthrough]];
 			case '0':
 			case '1':
 			case '2':

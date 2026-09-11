@@ -127,6 +127,19 @@ webos_add_compiler_flags(ALL
 webos_add_compiler_flags(ALL
     -Wno-unused-parameter
     -Wno-empty-body
+    # MojService::CategoryHandler dispatch tables (MojDbServiceHandler*.cpp)
+    # intentionally store a member-function pointer under a common base
+    # signature and cast it back to the real signature at call time -- the
+    # same object, same calling convention, differing only in declared
+    # argument types. This is the standard LS2 callback-table pattern used
+    # throughout webOS services; reworking it (e.g. type-erased dispatch)
+    # is out of scope here.
+    -Wno-cast-function-type
+    # a single false positive in MojDbLunaServiceDb's constructor: passing
+    # the address of a reference parameter is flagged as "provably
+    # non-null", which is simply true and not a bug.
+    -Wno-address
+    -Wno-nonnull-compare
     )
 
 set(WEBOS_USE_WERROR FALSE CACHE BOOL "Set to TRUE to enable -Werror")
@@ -173,7 +186,9 @@ if(BUILD_LS2)
 
     webos_add_compiler_flags(ALL ${DB_BACKEND_WRAPPER_CFLAGS})
 
-    include_directories (${DB_BACKEND_INCLUDES})
+    # SYSTEM: leveldb-tl (sandwich_db.hpp etc.) is a third-party, header-only
+    # dependency we don't own; don't let its warnings show up as ours.
+    include_directories (SYSTEM ${DB_BACKEND_INCLUDES})
     add_subdirectory(src/db-luna)
 
     #install error handling scripts

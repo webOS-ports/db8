@@ -49,7 +49,7 @@ MojErr combineAvgNumbers2Report(const boost::filesystem::path& reportPath, const
         for (const auto& t : ts.second) {
             sum = sum + boost::chrono::duration <double, boost::milli> (t).count();
         }
-        avgTimeMap[ts.first] = sum/ts.second.size();
+        avgTimeMap[ts.first] = sum / static_cast<double>(ts.second.size());
     }
 
     if (reportPath.string().find("get")!= std::string::npos) {
