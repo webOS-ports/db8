@@ -35,6 +35,7 @@ option (WANT_SNAPPY_COMPRESSION  "Enable compression"        ON)
 option (WANT_DYNAMIC             "Switch to dynamic service" OFF)
 option (WANT_PROFILING           "Enable profiling"          OFF)
 option (BUILD_LMDB               "Enable lmdb"               OFF)
+set (WANT_SANITIZER "" CACHE STRING "Build with a sanitizer: address, undefined, thread or leak")
 
 include(FindPkgConfig)
 
@@ -142,6 +143,13 @@ endif()
 
 # Note: no-psabi will disable notice for gcc: the mangling of 'va_list' has changed in GCC 4.4
 
+# Hardening test builds: -DWANT_SANITIZER=address (or undefined/thread/leak)
+if (WANT_SANITIZER)
+    message(STATUS "Building with -fsanitize=${WANT_SANITIZER}")
+    webos_add_compiler_flags(ALL -fsanitize=${WANT_SANITIZER} -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=${WANT_SANITIZER})
+endif()
+
 # to turn on extra debug information (like output to log dirty buffers data) add debug compile flag -DMOJ_DEBUG_LOGGING
 webos_add_compiler_flags(DEBUG -DMOJ_DEBUG)
 webos_add_linker_options(ALL --no-undefined)
@@ -216,6 +224,7 @@ if (WEBOS_CONFIG_BUILD_TESTS)
         endif ()
     endforeach ()
     add_subdirectory(test/dbclient-perf)
+    add_subdirectory(test/stress)
     add_subdirectory(test/volume)
     #add_subdirectory(test/db-media)
 
