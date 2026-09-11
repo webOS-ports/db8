@@ -1240,7 +1240,7 @@ MojErr MojDb::putImpl(MojObject& obj, MojUInt32 flags, MojDbReq& req, bool check
 	MojObject id;
 	if (obj.get(IdKey, id)) {
         // Attach shard ID only put query but putKind and merge when shard ID exists
-        if (MojFlagGet(flags, MojDbFlagNone)) {
+        if (flags == MojDbFlagNone) {
             MojErr err = attachShardId(shardIdStr, id);
             MojErrCheck(err);
         }
@@ -1480,9 +1480,16 @@ MojErr MojDb::createVersionFile(const MojChar* path, const MojString& versionFil
     LOG_TRACE("Entering function %s", __FUNCTION__);
     MojAssert(path);
 
-    MojChar nameTemplate[TmpVersionFileLength] = _T("_tmpVersion_XXXXXX");
+    MojString tmpTemplate;
+    MojErr err = tmpTemplate.format(_T("%s/_tmpVersion_XXXXXX"), path);
+    MojErrCheck(err);
+    MojAutoArrayPtr<MojChar> nameTemplate(new MojChar[tmpTemplate.length() + 1]);
+    MojAllocCheck(nameTemplate.get());
+    MojStrCpy(nameTemplate.get(), tmpTemplate.data());
+    err = MojMkTemp(nameTemplate.get());
+    MojErrCheck(err);
     MojString tmpVersionFileName;
-    MojErr err = tmpVersionFileName.format(_T("%s/%s"), path, MojMkTemp(nameTemplate));
+    err = tmpVersionFileName.assign(nameTemplate.get());
     MojErrCheck(err);
 
     MojString version;
@@ -1718,7 +1725,6 @@ MojErr MojDb::isSupported (MojString& i_shardId, MojString& i_kindStr, bool & re
     MojDbStorageItem* p_item = NULL;
     err = cursor.get(p_item, foundOut);
     MojErrCheck(err);
-    cursor.close();
 
     if(foundOut)
     {
@@ -1741,6 +1747,9 @@ MojErr MojDb::isSupported (MojString& i_shardId, MojString& i_kindStr, bool & re
             }
         }
     }
+    // the item returned by cursor.get() lives inside the cursor's storage
+    // query: close only after the last use
+    cursor.close();
 
     ret = isExist;
     return MojErrNone;
@@ -1752,19 +1761,29 @@ MojErr MojDb::removePrivateDataByOwner(const MojString& owner, MojDbReqRef req)
 
     //filter kinds by owner and delete (do it for kinds marked 'private' only!)
     bool foundOut;
-    MojString kindId;
-    MojDbKind* kind;
     MojVector<MojDbKind*> list;
     MojErr err = kindEngine()->getByOwner(owner, list);
+    MojErrCheck(err);
 
+    // collect the ids first: recursiveDelKind destroys sub-kinds, which may
+    // still be raw pointers later in 'list'
+    MojVector<MojString> ids;
     for (MojVector<MojDbKind*>::ConstIterator it = list.begin(); it != list.end(); ++it)
     {
         if((*it)->hasPrivateData())
         {
-            MojObject id((*it)->id());
-            err = recursiveDelKind(id, foundOut, 0, req);
+            err = ids.push((*it)->id());
             MojErrCheck(err);
         }
+    }
+
+    for (MojVector<MojString>::ConstIterator it = ids.begin(); it != ids.end(); ++it)
+    {
+        MojObject id(*it);
+        err = recursiveDelKind(id, foundOut, 0, req);
+        // already removed as a sub-kind of an earlier deletion
+        MojErrCatch(err, MojErrDbKindNotRegistered) continue;
+        MojErrCheck(err);
     }
 
     return MojErrNone;

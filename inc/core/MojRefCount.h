@@ -74,8 +74,8 @@ public:
 	MojRefCountedPtr(MojRefCountedPtrRef<T> ref) : Base() { if (ref.m_p && ref.m_p->retainValid()) m_p = ref.m_p; }
 	~MojRefCountedPtr() { release(); }
 
-	void reset(T* p = NULL) { release(); m_p = p; retain(); }
-	void resetValid(T* p) { release(); m_p = p && p->retainValid() ? p : 0; }
+	void reset(T* p = NULL) { if (p) p->retain(); T* old = m_p; m_p = p; if (old) old->release(); }
+	void resetValid(T* p) { T* newP = p && p->retainValid() ? p : 0; T* old = m_p; m_p = newP; if (old) old->release(); }
 	MojRefCountedPtr& operator=(const MojRefCountedPtr& rhs) { resetValid(rhs.get()); return *this; }
 	MojRefCountedPtr& operator=(MojRefCountedPtrRef<T> rhs) { resetValid(rhs.m_p); return *this; }
 

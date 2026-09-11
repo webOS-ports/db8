@@ -238,9 +238,17 @@ MojErr MojFileRename(const MojChar* oldName, const MojChar* newName)
 #endif /* MOJ_USE_FILE_RENAME */
 
 #ifdef MOJ_USE_MKTEMP
-const MojChar* MojMkTemp(MojChar* name)
+MojErr MojMkTemp(MojChar* nameTemplate)
 {
-    return mktemp(name);
+    MojAssert(nameTemplate);
+
+    int fd = mkstemp(nameTemplate);
+    if (fd < 0)
+        MojErrThrowErrno(_T("mkstemp"));
+    if (close(fd) < 0)
+        MojErrThrowErrno(_T("close"));
+
+    return MojErrNone;
 }
 #endif /* MOJ_USE_MKTEMP */
 

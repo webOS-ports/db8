@@ -263,6 +263,8 @@ template<class T, class EQ, class COMP>
 MojErr MojVector<T, EQ, COMP>::erase(MojSize idx, MojSize numElems)
 {
 	MojAssert(idx + numElems <= size());
+	if (idx + numElems > size())
+		MojErrThrow(MojErrValueOutOfRange);
 
 	// may invalidate iters
 	MojErr err = ensureWritable();

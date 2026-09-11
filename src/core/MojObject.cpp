@@ -386,7 +386,7 @@ MojErr MojObject::delString(MojSize idx)
 {
     ArrayImpl& array = ensureArray();
 
-    if (idx <= array.m_vec.size())
+    if (idx < array.m_vec.size())
     {
         MojErr err = array.m_vec.erase(idx);
         MojErrCheck(err);
@@ -465,12 +465,10 @@ bool MojObject::operator==(const MojObject& rhs) const
 
 void MojObject::init(const MojObject& obj)
 {
+    // clone before releasing: obj may alias *this or live inside our own tree
+    Impl* newImpl = obj.impl() ? obj.impl()->clone() : new UndefinedImpl();
     release();
-
-    if (obj.impl())
-        m_implementation = obj.impl()->clone();
-    else
-        m_implementation = new UndefinedImpl();
+    m_implementation = newImpl;
 }
 
 void MojObject::init(Type type)

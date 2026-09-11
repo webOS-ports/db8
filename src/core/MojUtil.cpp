@@ -41,8 +41,8 @@ uint32_t MojHash (const void* p, MojSize len)
 {
 	MojAssert(p || len == 0);
 	const MojByte* src = (const MojByte*) p;
-	MojSize hash = len;
-	MojSize tmp;
+	uint32_t hash = (uint32_t) len;
+	uint32_t tmp;
 	int rem;
 
 	if (len == 0)
@@ -356,8 +356,9 @@ MojErr MojRmDirContent(const MojChar* path, MojSize depth)
 			continue;
 		nameLen = MojStrLen(ent.d_name);
 		MojAssert(nameLen <= MojNameMax);
-		MojStrNCpy(entName.get() + pathLen, ent.d_name, nameLen);
-		entName[pathLen + nameLen] = '\0';
+		if (nameLen > MojNameMax)
+			continue;
+		MojMemCpy(entName.get() + pathLen, ent.d_name, nameLen + 1);
 		if (ent.d_type == DT_DIR) {
 			err = MojRmDirRecursive(entName.get(), depth + 1);
 			MojErrGoto(err, Done);

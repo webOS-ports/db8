@@ -145,15 +145,22 @@ MojErr MojSignal0::call()
 {
 	MojThreadGuard guard(m_mutex);
 	SlotList list = m_slots;
+	MojErr err = MojErrNone;
 	while (!list.empty()) {
 		MojSlotBase0* slot = static_cast<MojSlotBase0*>(list.popFront());
 		MojRefCountedPtr<MojSignalHandler> handler(slot->handler());
 		m_slots.pushBack(slot);
 		guard.unlock();
-		MojErr err = slot->invoke();
-		MojErrCheck(err);
+		err = slot->invoke();
 		guard.lock();
+		if (err != MojErrNone)
+			break;
 	}
+	// an error from a slot must not strand the remaining slots in the local
+	// list copy: reattach them so their bookkeeping stays consistent
+	while (!list.empty())
+		m_slots.pushBack(list.popFront());
+	MojErrCheck(err);
 	return MojErrNone;
 }
 
@@ -161,14 +168,24 @@ MojErr MojSignal0::fire()
 {
 	MojThreadGuard guard(m_mutex);
 	SlotList list = m_slots;
+	MojErr err = MojErrNone;
 	while (!list.empty()) {
 		MojSlotBase0* slot = static_cast<MojSlotBase0*>(list.popFront());
 		MojRefCountedPtr<MojSignalHandler> handler(slot->handler());
 		disconnect(slot);
 		guard.unlock();
-		MojErr err = slot->invoke();
-		MojErrCheck(err);
+		err = slot->invoke();
 		guard.lock();
+		if (err != MojErrNone)
+			break;
 	}
+	// fire disconnects every slot: an error from one slot must not leave the
+	// remaining ones stranded in the local list copy
+	while (!list.empty()) {
+		MojSlotBase* slot = list.popFront();
+		MojRefCountedPtr<MojSignalHandler> handler(slot->handler());
+		disconnect(slot);
+	}
+	MojErrCheck(err);
 	return MojErrNone;
 }

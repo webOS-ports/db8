@@ -102,7 +102,7 @@ private:
 	void release();
 	void reset(MojChar* chars, MojSize len) { reset(chars, chars + len, chars + len); }
 	void reset(MojChar* begin, MojChar* end, MojChar* endAlloc);
-	bool isWritable() { return MojRefCountGet(m_begin) == 1; }
+	bool isWritable() { return m_begin != s_emptyString && MojRefCountGet(m_begin) == 1; }
 	static MojChar* alloc(MojSize len);
 	MojErr realloc(MojSize allocLen);
 	MojSize freeSpace() { return m_endAlloc - m_end; }
