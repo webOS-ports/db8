@@ -45,5 +45,12 @@ webos_build_system_bus_files(files/sysbus/dynamic)
 webos_build_daemon(NAME mojodb-luna LAUNCH files/launch/dynamic/)
 else ()
 webos_build_system_bus_files(files/sysbus/static)
+# The roles and service file for the gtest clients describe binaries that only
+# exist when the tests are built, and that land in a separate package. Keeping
+# them next to the daemon's own files meant ls-hubd loaded roles keyed on
+# /usr/lib/db8/tests/* on every boot of an image that has no tests installed.
+if (WEBOS_CONFIG_BUILD_TESTS)
+    webos_build_system_bus_files(files/sysbus/test)
+endif()
 webos_build_daemon(NAME mojodb-luna LAUNCH files/launch/static)
 endif()
