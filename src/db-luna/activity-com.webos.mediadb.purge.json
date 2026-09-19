@@ -3,7 +3,8 @@
         "name" : "webosmediadbpurge",
         "description" : "Scheduled webosmediadb purge activity",
         "schedule" : {
-            "interval" : "24h"
+            "interval" : "24h",
+            "wake" : false
         },
         "callback" : {
             "method" : "palm://com.webos.mediadb/internal/scheduledPurge"
