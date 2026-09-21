@@ -162,5 +162,46 @@
     "com.webos.mediadb/load",
     "com.webos.mediadb/putQuotas",
     "com.webos.mediadb/quotaStats"
+    ],
+    "keymgrdatabase.operation":[
+    "com.webos.keymgrdb/batch",
+    "com.webos.keymgrdb/del",
+    "com.webos.keymgrdb/delKind",
+    "com.webos.keymgrdb/find",
+    "com.webos.keymgrdb/get",
+    "com.webos.keymgrdb/merge",
+    "com.webos.keymgrdb/mergePut",
+    "com.webos.keymgrdb/purgeStatus",
+    "com.webos.keymgrdb/put",
+    "com.webos.keymgrdb/putKind",
+    "com.webos.keymgrdb/putPermissions",
+    "com.webos.keymgrdb/purge",
+    "com.webos.keymgrdb/reserveIds",
+    "com.webos.keymgrdb/search",
+    "com.webos.keymgrdb/watch",
+    "com.webos.keymgrdb/removeAppData",
+    "com.webos.keymgrdb/listActiveMedia",
+    "com.webos.keymgrdb/setShardMode",
+    "com.webos.keymgrdb/shardInfo"
+    ],
+    "keymgrdatabase.profiling":[
+    "com.webos.keymgrdb/getProfile",
+    "com.webos.keymgrdb/profile",
+    "com.webos.keymgrdb/stats"
+    ],
+    "keymgrdatabase.management":[
+    "com.webos.keymgrdb/compact",
+    "com.webos.keymgrdb/dump",
+    "com.webos.keymgrdb/internal/postBackup",
+    "com.webos.keymgrdb/internal/postRestore",
+    "com.webos.keymgrdb/internal/preBackup",
+    "com.webos.keymgrdb/internal/preRestore",
+    "com.webos.keymgrdb/internal/scheduledPurge",
+    "com.webos.keymgrdb/internal/scheduledSpaceCheck",
+    "com.webos.keymgrdb/internal/spaceCheck",
+    "com.webos.keymgrdb/internal/releaseAdminProfile",
+    "com.webos.keymgrdb/load",
+    "com.webos.keymgrdb/putQuotas",
+    "com.webos.keymgrdb/quotaStats"
     ]
     }

@@ -15,6 +15,11 @@
 "outbound":["com.webos.*", "com.palm.*", "org.webosports.*"]},
 {
 "service":"com.webos.epgdb",
-"outbound":["com.webos.*", "com.palm.*", "org.webosports.*"]}
+
+"outbound":["com.webos.*", "com.palm.*", "org.webosports.*"]},
+{
+"service":"com.webos.keymgrdb",
+"outbound":["com.palm.activitymanager","com.palm.systemmanager", "com.webos.service.attachedstoragemanager", "com.webos.settingsservice","com.webos.service.devicereset","com.webos.service.micomservice","com.webos.service.faultmanager", "com.palm.db"]
+}
 ]
 }
