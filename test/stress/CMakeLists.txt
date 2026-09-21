@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2018 LG Electronics, Inc.
+# Copyright (c) 2026 LG Electronics, Inc. and webOS-ports project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,36 +14,33 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+project(db8-stress CXX)
 
-project(gtest_db_media C CXX)
+include_directories(${CMAKE_SOURCE_DIR}/inc)
 
-include_directories(${WEBOS_GTEST_INCLUDES})
-include_directories(../db)
-
-add_definitions(-Wall -Wno-deprecated -pthread -std=c++17)
-
+set(DB_BACKEND_WRAPPER_SOURCES_CPP "")
 foreach(filename ${DB_BACKEND_WRAPPER_SOURCES})
     set(DB_BACKEND_WRAPPER_SOURCES_CPP ${DB_BACKEND_WRAPPER_SOURCES_CPP} "${CMAKE_SOURCE_DIR}/${filename}")
 endforeach ()
 
-add_executable(${PROJECT_NAME}
-               MediaTest.cpp
-               Runner.cpp
-               ${DB_BACKEND_WRAPPER_SOURCES_CPP})
-
+add_executable(${PROJECT_NAME} StressRunner.cpp ${DB_BACKEND_WRAPPER_SOURCES_CPP})
 target_link_libraries(${PROJECT_NAME}
-                      mojocore
-                      mojodb
-                      mojoluna
-                      ${DB_BACKEND_LIB})
+    mojocore
+    mojodb
+    ${DB_BACKEND_LIB}
+    atomic
+    pthread
+)
 
-target_link_libraries(${PROJECT_NAME} ${WEBOS_GTEST_LIBRARIES})
-
-foreach (backend ${WEBOS_DB8_BACKEND})
-    add_test(NAME ${backend}/${test} COMMAND env MOJODB_ENGINE=${backend} ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME})
-endforeach ()
+# quick smoke run as part of "make check"; pin the engine in case several
+# backends are compiled in
+list(GET WEBOS_DB8_BACKEND 0 STRESS_ENGINE)
+add_test(NAME db8-stress-smoke COMMAND ${PROJECT_NAME} --seconds 5 --writers 2 --readers 2 --objects 200)
+set_tests_properties(db8-stress-smoke PROPERTIES ENVIRONMENT "MOJODB_ENGINE=${STRESS_ENGINE}")
 
 install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}
         DESTINATION ${WEBOS_INSTALL_LIBDIR}/${CMAKE_PROJECT_NAME}/tests
         PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_EXECUTE GROUP_READ)
-
+install(PROGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/db8-stress-luna.sh
+        DESTINATION ${WEBOS_INSTALL_LIBDIR}/${CMAKE_PROJECT_NAME}/tests
+        PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_EXECUTE GROUP_READ)

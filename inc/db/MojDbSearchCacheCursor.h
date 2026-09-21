@@ -27,7 +27,7 @@
 class MojDbSearchCursor : public MojDbCursor
 {
 public:
-    MojDbSearchCursor() : m_limit(0), m_pos(nullptr), m_startPos(0), m_count(0), m_collation(MojDbCollationInvalid), m_limitPos(nullptr){}
+    MojDbSearchCursor() : m_limit(0), m_startPos(0), m_pos(nullptr), m_limitPos(nullptr), m_collation(MojDbCollationInvalid), m_count(0){}
     MojDbSearchCursor(const MojString& locale);
     ~MojDbSearchCursor() override;
     MojErr close() override;
@@ -91,4 +91,5 @@ private:
     MojDbSearchCache::QueryKey m_queryKey;
     MojDbQuery m_cacheQuery;
     MojThreadMutex m_items_mutex;
+    MojErr m_workerErr { MojErrNone };
 };

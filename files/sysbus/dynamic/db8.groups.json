@@ -1,5 +1,5 @@
 {
-  "allowedNames": ["com.palm.db","com.palm.tempdb","com.webos.mediadb","com.webos.epgdb", "com.webos.keymgrdb"],
+  "allowedNames": ["com.palm.db","com.palm.tempdb","com.webos.mediadb","com.webos.epgdb", "com.webos.keymgrdb", "com.webos.db8.test.*"],
   "database.operation":["dev"],
   "database.profiling":["dev"],
   "database.management":["oem"],
@@ -14,5 +14,6 @@
   "mediadatabase.management":["oem"],
   "keymgrdatabase.operation":["oem"],
   "keymgrdatabase.profiling":["oem"],
-  "keymgrdatabase.management":["oem"]
+  "keymgrdatabase.management":["oem"],
+  "database.test":["dev"]
   }

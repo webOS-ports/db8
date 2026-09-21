@@ -375,7 +375,7 @@ MojErr MojString::appendVFormat(const MojChar* formatStr, va_list args)
 Done:
 	va_end(args2);
 	MojStringAssertValid();
-	return MojErrNone;
+	return err;
 }
 
 MojErr MojString::base64Encode(const MojVector<MojByte>& vec, bool pad)

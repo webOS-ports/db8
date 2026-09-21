@@ -477,7 +477,7 @@ MojErr MojDbProfileEngine::updateMemInfo(MojString &formattedStr)
 	std::stringstream s(statmStr.data());
 	s >> size >> resident >> share;
 	unsigned long totalMemInKB = (memInfo.totalram / KILOBYTE);
-	MojDouble percentageRAMUsed = ((MojDouble) 100 / totalMemInKB) * PAGES_TO_KILOBYTE(resident);
+	MojDouble percentageRAMUsed = ((MojDouble) 100 / (MojDouble) totalMemInKB) * (MojDouble) PAGES_TO_KILOBYTE(resident);
 
 	err = formattedStr.format("%%MEM=%.2f, VSS=%lu, RSS=%lu, SHR=%lu",
 			percentageRAMUsed, PAGES_TO_KILOBYTE(size),

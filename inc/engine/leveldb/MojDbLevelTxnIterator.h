@@ -66,7 +66,7 @@ public:
     void next();
     void seek(const std::string& key);
     void save() { m_it.save(); }
-    void restore() { m_it.restore(); }
+    void restore() { m_it.restore(); m_insertsItertor = inserts.begin(); }
     void detach();
 
     bool inTransaction() const;

@@ -24,12 +24,12 @@ MojDbCursor::MojDbCursor()
 : m_ownTxn(true),
   m_lastErr(MojErrNone),
   m_kindEngine(NULL),
-  m_vmode(false),
 #ifdef LMDB_ENGINE_SUPPORT
-  m_dbIndex(NULL)
+  m_dbIndex(NULL),
 #else
-  m_dbIndex(NULL)
+  m_dbIndex(NULL),
 #endif
+  m_vmode(false)
 {
 }
 

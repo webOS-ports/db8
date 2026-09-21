@@ -49,7 +49,7 @@ public:
 
     MojErr abort();
 
-    bool isValid() { return (m_db == NULL); }
+    bool isValid() { return (m_db != NULL); }
     leveldb::DB *db() { return m_db; }
 
     // operations

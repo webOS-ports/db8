@@ -59,7 +59,10 @@ MojErr MojDbServiceHandlerBase::invoke(Callback method, MojServiceMessage* msg, 
                 MojString faultRegisterScriptPath;
                 MojErr err = m_db.getConf().getRequired("faultRegisterScriptPath", faultRegisterScriptPath);
                 MojErrCatchAll(err);
-                (void) system(faultRegisterScriptPath.data());
+                int faultRegisterResult = system(faultRegisterScriptPath.data());
+                if (faultRegisterResult != 0) {
+                    LOG_WARNING(MSGID_DB_SERVICE_ERROR, 0, "db: fault register script failed");
+                }
             } else if (MojErrNone == alertErr && bytesAvailable == 0l && MojDbSpaceAlert::AlertLevelHigh == alertLevel) {
                 LOG_CRITICAL(MSGID_DB_SERVICE_ERROR, 0, "db: IO error due to no space; shutting down");
                 m_reactor.stop();

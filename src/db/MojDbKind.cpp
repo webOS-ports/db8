@@ -51,11 +51,11 @@ MojDbKind::MojDbKind(MojDbStorageExtDatabase* db, MojDbKindEngine* kindEngine, b
 : m_privateData(false),
   m_assignId(true),
   m_version(0),
+  m_hash(0),
   m_db(db),
   m_kindEngine(kindEngine),
   m_backup(false),
-  m_builtin(builtIn),
-  m_hash(0)
+  m_builtin(builtIn)
 {
 #ifdef WITH_SEARCH_QUERY_CACHE
 	m_updateRev = 0;
@@ -363,8 +363,9 @@ MojErr MojDbKind::configure(const MojObject& obj, const KindMap& map, const MojS
     // assignId
     bool isAssignId = true;
 
-    if(obj.get(AssignIdKey, isAssignId))
+    if(obj.get(AssignIdKey, isAssignId)) {
         m_assignId = isAssignId;
+    }
 
 	// keep a copy of obj
 	m_obj = obj;
@@ -1057,7 +1058,7 @@ MojErr MojDbKind::removeKind(KindVec& vec, MojDbKind* kind)
 
 	MojSize idx = vec.find(kind);
 	MojAssert(idx != MojInvalidIndex);
-        if (idx == MojInvalidKindIndex)
+	if (idx == MojInvalidIndex)
 	{
 		return MojErrNotFound;
 	}

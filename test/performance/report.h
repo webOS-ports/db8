@@ -37,7 +37,7 @@ MojErr combineAvgNumbers2Report(const boost::filesystem::path& reportPath, const
     full_path += boost::filesystem::path::preferred_separator;
 
     //ignore multi threaded reports for combining report
-    if (reportPath.parent_path().leaf().compare("1")) {
+    if (reportPath.parent_path().filename().compare("1")) {
         std::cout << "ignore multi threaded reports" << std::endl;
         return MojErrNone;
     }
@@ -49,7 +49,7 @@ MojErr combineAvgNumbers2Report(const boost::filesystem::path& reportPath, const
         for (const auto& t : ts.second) {
             sum = sum + boost::chrono::duration <double, boost::milli> (t).count();
         }
-        avgTimeMap[ts.first] = sum/ts.second.size();
+        avgTimeMap[ts.first] = sum / static_cast<double>(ts.second.size());
     }
 
     if (reportPath.string().find("get")!= std::string::npos) {

@@ -146,21 +146,27 @@ MojErr MojDbLevelTableTxn::commitImpl()
         writeBatch.Put(it->first, it->second);
     }
 
+    leveldb::Status s;
     if (!m_pendingDeletes.empty() || !m_pendingValues.empty())
     {
         // Write to leveldb only if pending deletes/values.
-        leveldb::Status s = m_db->Write(MojDbLevelEngine::getWriteOptions(), &writeBatch);
-        MojLdbErrCheck(s, _T("db->Write"));
+        s = m_db->Write(MojDbLevelEngine::getWriteOptions(), &writeBatch);
     }
 
+    // cleanup() clears m_iterators, so restore from a copy; restore must run
+    // even when the write failed or every open cursor is left with a deleted
+    // leveldb iterator
+    std::set<MojDbLevelTxnIterator*> iterators(m_iterators);
     cleanup();
 
-    for(std::set<MojDbLevelTxnIterator*>::const_iterator i = m_iterators.begin();
-        i != m_iterators.end();
+    for(std::set<MojDbLevelTxnIterator*>::const_iterator i = iterators.begin();
+        i != iterators.end();
         ++i)
     {
         (*i)->restore();
     }
+
+    MojLdbErrCheck(s, _T("db->Write"));
 
     return MojErrNone;
 }

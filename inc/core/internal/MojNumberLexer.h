@@ -96,10 +96,12 @@ namespace MojNumber {
                         MojErrThrowMsg(MojErrInvalidDecimal, "Expected sign/digit but got '%c'", c);
                     }
                     // fall through case label
+                    [[fallthrough]];
 
                 case StateMagnitude:
                     state = StateMagnitudeDigits;
                     // fall through case label
+                    [[fallthrough]];
 
                 case StateMagnitudeDigits:
                     switch (c)
@@ -166,10 +168,12 @@ namespace MojNumber {
                     }
 #endif
                     // fall through case label
+                    [[fallthrough]];
 
                 case StateExponentFirstDigit:
                     state = StateExponentDigits;
                     // fall through case label
+                    [[fallthrough]];
 
                 case StateExponentDigits:
                     switch (c)

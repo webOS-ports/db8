@@ -23,9 +23,11 @@
 
 MojDbSearchCursor::MojDbSearchCursor(const MojString& localeStr)
 : m_limit(0),
+  m_startPos(0),
   m_pos(nullptr),
   m_locale(localeStr),
-  m_startPos(0)
+  m_collation(MojDbCollationInvalid),
+  m_count(0)
 {
 }
 
@@ -390,6 +392,7 @@ MojErr MojDbSearchCursor::loadObjects(const ObjectSet& ids)
  LOG_TRACE("Entering function %s", __FUNCTION__);
 
 		MojUInt32 seqNum = 0;
+		m_workerErr = MojErrNone;
 		GThreadPool *tpool = g_thread_pool_new(searchThread_caller, this, N_SEARCH_THREAD, TRUE, NULL);
 		for (ObjectSet::ConstIterator i = ids.begin(); i != ids.end(); ++i) {
 			ObjectInfo* info = new ObjectInfo;
@@ -399,9 +402,12 @@ MojErr MojDbSearchCursor::loadObjects(const ObjectSet& ids)
 			g_thread_pool_push(tpool, info, NULL);
 		}
 	g_thread_pool_free(tpool, FALSE /* processes remained tasks for tpool */, TRUE /* waits until all tasks for tpool are over */);
-	for (auto & item : m_sequencedItems)
-		m_items.push(item);
-return MojErrNone;
+	MojErrCheck(m_workerErr);
+	for (auto & item : m_sequencedItems) {
+		MojErr err = m_items.push(item);
+		MojErrCheck(err);
+	}
+	return MojErrNone;
 }
 
 
@@ -411,6 +417,12 @@ void MojDbSearchCursor::searchThread_caller(void *arg, void *user_data)
     MojDbSearchCursor* thiz = reinterpret_cast<MojDbSearchCursor*>(user_data);
 
     MojErr err = thiz->searchThread_callee(info);
+    if (err) {
+        // latch the first worker failure so loadObjects can report it
+        MojThreadGuard guard(thiz->m_items_mutex);
+        if (thiz->m_workerErr == MojErrNone)
+            thiz->m_workerErr = err;
+    }
     if (info)
         delete info;
 }
@@ -419,7 +431,9 @@ MojErr MojDbSearchCursor::searchThread_callee(const ObjectInfo* a_info)
 {
     MojObject obj;
     bool found = false;
-    // get item by id
+    // get item by id; the shared storage query/transaction is not thread-safe,
+    // so all storage access is serialized across the pool workers
+    MojThreadGuard guard(m_items_mutex);
     MojErr err = m_storageQuery->getById(*a_info->id, obj, found, m_kindEngine);
     if (err || !found)
         return err;
@@ -437,8 +451,7 @@ MojErr MojDbSearchCursor::searchThread_callee(const ObjectInfo* a_info)
         // create object item
         MojRefCountedPtr<MojDbObjectItem> item(new MojDbObjectItem(obj));
         MojAllocCheck(item.get());
-        // add to vec
-        MojThreadGuard guard(m_items_mutex);
+        // add to vec (still under m_items_mutex taken above)
         err = m_sequencedItems.put(a_info->seqNum, item);
         MojErrCheck(err);
     }
@@ -490,7 +503,9 @@ MojErr MojDbSearchCursor::sort()
 MojErr MojDbSearchCursor::distinct()
 {
     LOG_TRACE("Entering function %s", __FUNCTION__);
-	MojAssert(!m_items.empty());
+
+	if (m_items.size() < 2)
+		return MojErrNone;
 
 	ItemComp itemComp;
 	MojSize idx = 0;

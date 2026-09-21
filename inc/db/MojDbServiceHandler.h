@@ -65,6 +65,8 @@ private:
 	class Watcher : public MojSignalHandler
 	{
 	public:
+		using MojSignalHandler::handleCancel;
+
 		Watcher(MojServiceMessage* msg);
 
 		MojErr handleWatch();

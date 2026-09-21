@@ -29,7 +29,7 @@
 class MojDbSearchCursor : public MojDbCursor
 {
 public:
-        MojDbSearchCursor() : m_limit(0), m_pos(nullptr), m_startPos(0) {}
+        MojDbSearchCursor() : m_limit(0), m_startPos(0), m_pos(nullptr) {}
 	MojDbSearchCursor(const MojString& locale);
 	virtual ~MojDbSearchCursor();
 	virtual MojErr close();
@@ -86,6 +86,7 @@ private:
     MojDbQuery::Page m_page;
     MojUInt32 m_count;
     MojThreadMutex m_items_mutex;
+    MojErr m_workerErr { MojErrNone };
 };
 
 #endif // WITH_SEARCH_QUERY_CACHE

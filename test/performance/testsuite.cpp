@@ -51,7 +51,7 @@ MojErr metric_ProcessNObjects(const Suite& suite, const boost::filesystem::path&
 		MojErrCheck(err);
 	}
 
-	MojUInt32 dataset = std::atol(dbpath.filename().c_str());
+	MojUInt32 dataset = static_cast<MojUInt32>(std::atol(dbpath.filename().c_str()));
 	results->insert(std::make_pair(dataset, std::move(durations)));
 
 	err = db->close();
@@ -80,9 +80,9 @@ int main (int argc, const char** argv)
 	MojErr err;
 	boost::filesystem::path datasetPath = "dbs";
 	boost::filesystem::path reportsPath = "reports";
-	size_t repeats;
-	size_t samples;
-	size_t clientCount;
+	size_t repeats = 100;
+	size_t samples = 1000;
+	size_t clientCount = 1;
 
 	// Declare the supported options.
 	po::options_description desc("Allowed options");

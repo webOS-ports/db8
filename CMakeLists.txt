@@ -35,6 +35,7 @@ option (WANT_SNAPPY_COMPRESSION  "Enable compression"        ON)
 option (WANT_DYNAMIC             "Switch to dynamic service" OFF)
 option (WANT_PROFILING           "Enable profiling"          OFF)
 option (BUILD_LMDB               "Enable lmdb"               OFF)
+set (WANT_SANITIZER "" CACHE STRING "Build with a sanitizer: address, undefined, thread or leak")
 
 include(FindPkgConfig)
 
@@ -110,7 +111,7 @@ include(${CMAKE_SOURCE_DIR}/src/db-luna/BackendBuildRules.cmake)
 webos_build_pkgconfig(files/pkgconfig/mojodb)
 webos_build_pkgconfig(files/pkgconfig/db8)
 
-webos_add_compiler_flags(ALL -Wall -Wextra -fPIC -Wconversion -std=c++14
+webos_add_compiler_flags(ALL -Wall -Wextra -fPIC -Wconversion -std=c++17
                          -Wno-unused-but-set-variable -Wno-unused-variable
                          -fno-exceptions -frename-registers -DMOJ_LINUX -fno-strict-aliasing
                          -Wno-psabi
@@ -126,6 +127,19 @@ webos_add_compiler_flags(ALL
 webos_add_compiler_flags(ALL
     -Wno-unused-parameter
     -Wno-empty-body
+    # MojService::CategoryHandler dispatch tables (MojDbServiceHandler*.cpp)
+    # intentionally store a member-function pointer under a common base
+    # signature and cast it back to the real signature at call time -- the
+    # same object, same calling convention, differing only in declared
+    # argument types. This is the standard LS2 callback-table pattern used
+    # throughout webOS services; reworking it (e.g. type-erased dispatch)
+    # is out of scope here.
+    -Wno-cast-function-type
+    # a single false positive in MojDbLunaServiceDb's constructor: passing
+    # the address of a reference parameter is flagged as "provably
+    # non-null", which is simply true and not a bug.
+    -Wno-address
+    -Wno-nonnull-compare
     )
 
 set(WEBOS_USE_WERROR FALSE CACHE BOOL "Set to TRUE to enable -Werror")
@@ -141,6 +155,13 @@ if(WEBOS_USE_WERROR)
 endif()
 
 # Note: no-psabi will disable notice for gcc: the mangling of 'va_list' has changed in GCC 4.4
+
+# Hardening test builds: -DWANT_SANITIZER=address (or undefined/thread/leak)
+if (WANT_SANITIZER)
+    message(STATUS "Building with -fsanitize=${WANT_SANITIZER}")
+    webos_add_compiler_flags(ALL -fsanitize=${WANT_SANITIZER} -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=${WANT_SANITIZER})
+endif()
 
 # to turn on extra debug information (like output to log dirty buffers data) add debug compile flag -DMOJ_DEBUG_LOGGING
 webos_add_compiler_flags(DEBUG -DMOJ_DEBUG)
@@ -165,7 +186,9 @@ if(BUILD_LS2)
 
     webos_add_compiler_flags(ALL ${DB_BACKEND_WRAPPER_CFLAGS})
 
-    include_directories (${DB_BACKEND_INCLUDES})
+    # SYSTEM: leveldb-tl (sandwich_db.hpp etc.) is a third-party, header-only
+    # dependency we don't own; don't let its warnings show up as ours.
+    include_directories (SYSTEM ${DB_BACKEND_INCLUDES})
     add_subdirectory(src/db-luna)
 
     #install error handling scripts
@@ -216,6 +239,7 @@ if (WEBOS_CONFIG_BUILD_TESTS)
         endif ()
     endforeach ()
     add_subdirectory(test/dbclient-perf)
+    add_subdirectory(test/stress)
     add_subdirectory(test/volume)
     #add_subdirectory(test/db-media)
 

@@ -65,7 +65,7 @@ public:
 private:
     database_t* m_database;
     iterator_t* m_it;
-    key_t savedKey;
+    std::string savedKey;
 
     bool m_start;
     bool m_end;

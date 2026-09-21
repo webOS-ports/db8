@@ -298,13 +298,13 @@ MojErr MojDbLevelDatabase::get(MojDbLevelItem& key, MojDbStorageTxn* txn, bool f
     else
         s = m_db->Get(MojDbLevelEngine::getReadOptions(), *key.impl(), &str);
 
-    //MojLdbErrCheck(s, _T("db->get"));
+    if (s.IsNotFound())
+        return MojErrNone;
+    MojLdbErrCheck(s, _T("db->get"));
 
-    if(s.IsNotFound() == false)
-    {
-        foundOut = true;
-        valOut.fromBytes(reinterpret_cast<const MojByte*>(str.data()), str.size());
-    }
+    foundOut = true;
+    MojErr err = valOut.fromBytes(reinterpret_cast<const MojByte*>(str.data()), str.size());
+    MojErrCheck(err);
 
     return MojErrNone;
 }

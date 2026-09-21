@@ -77,7 +77,7 @@ MojErr MojBuffer::toByteVec(ByteVec& vecOut) const
 	vecOut.clear();
 	for (ChunkList::ConstIterator i = m_chunks.begin(); i != m_chunks.end(); ++i) {
 		const MojByte* base = (i == m_chunks.begin()) ? m_readPos : (*i)->data();
-		MojErr err = vecOut.append(base, base + (*i)->dataSize());
+		MojErr err = vecOut.append(base, (*i)->dataEnd());
 		MojErrCheck(err);
 	}
 	return MojErrNone;
@@ -162,6 +162,7 @@ void MojBuffer::advance(MojSize size)
 
 MojBuffer& MojBuffer::operator=(MojBuffer& rhs)
 {
+	clear();
 	m_chunks = rhs.m_chunks;
 	m_readPos = rhs.m_readPos;
 	rhs.m_readPos = NULL;
@@ -218,6 +219,7 @@ MojErr MojBuffer::consolidate()
 		// replace existing chunks with new one
 		clear();
 		m_chunks.pushBack(chunk);
+		m_readPos = chunk->data();
 	}
 	return MojErrNone;
 }

@@ -183,6 +183,7 @@ MojErr MojDbQueryPlan::rangesFromKeys(MojDbKey lowerKey, MojDbKey upperKey, MojD
 		MojAssert(lowerOp != MojDbQuery::OpNone);
 		upperKey = prefix;
 		// no break. fall through to OpLessThanEq case
+		[[fallthrough]];
 
 	case MojDbQuery::OpLessThanEq:
 		// match while less-than ++upperKey
@@ -207,6 +208,7 @@ MojErr MojDbQueryPlan::rangesFromKeys(MojDbKey lowerKey, MojDbKey upperKey, MojD
 	case MojDbQuery::OpSearch:
 		group = index % m_groupCount;
 		// no break. fall through to OpPrefix case
+		[[fallthrough]];
 
 	case MojDbQuery::OpPrefix:
 		// remove null terminator
@@ -216,6 +218,7 @@ MojErr MojDbQueryPlan::rangesFromKeys(MojDbKey lowerKey, MojDbKey upperKey, MojD
 			MojErrCheck(err);
 		}
 		// no break. fall through to OpEq case
+		[[fallthrough]];
 
 	case MojDbQuery::OpEq:
 		// seek to lowerKey and match while less than ++prefix
@@ -243,6 +246,7 @@ MojErr MojDbQueryPlan::rangesFromKeys(MojDbKey lowerKey, MojDbKey upperKey, MojD
 		err = lowerKey.increment();
 		MojErrCheck(err);
 		// no break. fall through to OpGreaterThanEq case
+		[[fallthrough]];
 
 	case MojDbQuery::OpGreaterThanEq:
 		// seek to lowerKey and match while less than upperKey

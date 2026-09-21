@@ -27,6 +27,8 @@
 class MojLunaService : public MojService, public MojSignalHandler
 {
 public:
+    using MojSignalHandler::handleCancel;
+
     typedef MojSignal<> IdleTimeoutSignal;
     MojLunaService(bool allowPublicMethods = false/*keep flag to avoid activitymanager compilation error*/, MojMessageDispatcher* queue = NULL);
 	virtual ~MojLunaService();

@@ -97,7 +97,7 @@ MojErr MojDbProfileApplication::load(const MojChar* application, MojDb* db, MojD
 
 		bool kindFound;
 		m_data.get(KeyKindName, m_kindName, kindFound);
-		if (!found) m_kindName.clear();
+		if (!kindFound) m_kindName.clear();
 
 		m_data.get(KeyEnabled, m_enabled);
 

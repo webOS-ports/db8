@@ -15,6 +15,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "db/MojDb.h"
+
+// leveldb-tl's SandwichDB<...>::Part default constructor
+// (Part() : sandwich(nullptr) {}) intentionally leaves the `prefix` member
+// uninitialized; every use below only reads `part` after useShard() has
+// succeeded (checked via MojErrCheck immediately above each use), so the
+// uninitialized member is never actually read. GCC's -Wmaybe-uninitialized
+// still flags it because the inlined write/read straddles this translation
+// unit and the (system) header. Silence this specific, verified-safe
+// diagnostic for this file rather than patching a third-party header.
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
 #include "engine/sandwich/MojDbSandwichDatabase.h"
 #include "engine/sandwich/MojDbSandwichEngine.h"
 #include "engine/sandwich/MojDbSandwichQuery.h"
@@ -353,7 +365,7 @@ MojErr MojDbSandwichDatabase::del(MojDbShardId shardId, MojDbSandwichItem& key, 
         mojo::SandwichTxn::Part part;
         err = leveldb_txn->useShard(m_cookie, shardId, part);
         MojErrCheck(err);
-        part.Delete(*key.impl());
+        st = part.Delete(*key.impl());
     }
     else
     {
@@ -388,6 +400,7 @@ MojErr MojDbSandwichDatabase::delPrefix(MojDbSandwichEnvTxn &txn, leveldb::Slice
 
     mojo::SandwichTxn::Part part;
     MojErr err = txn.useShard(m_cookie, shardId, part);
+    MojErrCheck(err);
     auto it = part.NewIterator();
 
     it->Seek(prefix);
@@ -396,7 +409,7 @@ MojErr MojDbSandwichDatabase::delPrefix(MojDbSandwichEnvTxn &txn, leveldb::Slice
         auto key = it->key();
 
         size_t delSize = key.size() + it->value().size();
-        MojErr err = txn.offsetQuota(-(MojInt64) delSize);
+        err = txn.offsetQuota(-(MojInt64) delSize);
         MojErrCheck(err);
 
         auto s = part.Delete(key);

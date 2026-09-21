@@ -29,6 +29,9 @@ class MojDbSandwichEnvTxn;
 class MojDbSandwichDatabase final : public MojDbStorageExtDatabase
 {
 public:
+    using MojDbStorageExtDatabase::get;
+    using MojDbStorageExtDatabase::del;
+
     MojDbSandwichDatabase(const MojDbSandwichEngine::BackendDb::Part& part) :
         m_db(part), m_engine(nullptr)
     {}

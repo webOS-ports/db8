@@ -137,8 +137,8 @@ MojErr MojDbSandwichEngine::configure(const MojObject& config)
 
     // cache option
     MojInt64 cacheSize = 0L;
-    if (config.get("cacheSize", cacheSize)) {
-        OpenOptions.block_cache = leveldb::NewLRUCache(cacheSize);
+    if (config.get("cacheSize", cacheSize) && cacheSize > 0) {
+        OpenOptions.block_cache = leveldb::NewLRUCache(static_cast<size_t>(cacheSize));
     }
 
     return MojErrNone;
@@ -373,7 +373,10 @@ MojErr MojDbSandwichEngine::openSequence(const MojChar* name, MojDbStorageTxn* t
     MojErr err = seq->open(name, m_seqDb.get());
     MojErrCheck(err);
     seqOut = seq;
-    m_seqs.push(seq);
+
+    MojThreadGuard guard(m_dbMutex);
+    err = m_seqs.push(seq);
+    MojErrCheck(err);
 
     return MojErrNone;
 }
