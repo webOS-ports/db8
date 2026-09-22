@@ -3,7 +3,8 @@
         "name" : "mojotempdbpurge",
         "description" : "Scheduled mojotempdb purge activity",
         "schedule" : {
-            "interval" : "24h"
+            "interval" : "24h",
+            "wake" : false
         },
         "callback" : {
             "method" : "palm://com.palm.tempdb/internal/scheduledPurge"
