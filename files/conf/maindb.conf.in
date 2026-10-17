@@ -19,7 +19,7 @@
 			{"type":"db.role","object":"admin","caller":"com.palm.spacecadet","operations":{"*":"allow"}}
 		],
 		"quotas" : [
-                        {"owner":"*","size":10485760},
+                        {"owner":"*","size":104857600},
                         {"owner":"com.webos.*","size":94371840}
 
                 ],
