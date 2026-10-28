@@ -1761,3 +1761,119 @@ TEST_F(MojDbClientTest, testPermissions)
 	MojAssertNoErr(err);
 	MojAssertNoErr(handler->database_error());
 }
+
+// A del without "purge" must leave a tombstone that an incDel query finds:
+// that is how sync connectors and the contacts linker learn of deletes.
+static const MojChar* const TombstoneKind = _T("LunaDbClientTombstoneTest:1");
+
+static MojObject str(const MojChar* s)
+{
+	MojString out;
+	(void) out.assign(s);
+	return MojObject(out);
+}
+
+static MojErr findWithDeleted(MojDbServiceClient* client, const MojChar* foo, MojObject& resultsOut)
+{
+	MojDbQuery q;
+	MojErr err = q.from(TombstoneKind);
+	MojErrCheck(err);
+	err = q.where(_T("foo"), MojDbQuery::OpEq, str(foo));
+	MojErrCheck(err);
+	q.includeDeleted(true);
+
+	MojRefCountedPtr<MojDbClientTestResultHandler> handler(new MojDbClientTestResultHandler);
+	err = client->find(handler->slot(), q);
+	MojErrCheck(err);
+	err = handler->wait(client->service());
+	MojErrCheck(err);
+	err = handler->database_error();
+	MojErrCheck(err);
+	resultsOut = MojObject(MojObject::TypeArray);
+	(void) handler->result().get(MojDbServiceDefs::ResultsKey, resultsOut);
+	return MojErrNone;
+}
+
+class MojDbClientTombstoneTest : public MojDbClientTest
+{
+public:
+	void SetUp()
+	{
+		MojDbClientTest::SetUp();
+		MojErr err = writeTestObj(_T("{\"id\":\"LunaDbClientTombstoneTest:1\",\"owner\":\"com.webos.db8.test.client\",")
+								  _T("\"indexes\":[{\"name\":\"foo\",\"props\":[{\"name\":\"foo\"}],\"incDel\":true}]}"), true);
+		MojAssertNoErr(err);
+	}
+	void TearDown()
+	{
+		MojRefCountedPtr<MojDbClientTestResultHandler> handler(new MojDbClientTestResultHandler);
+		MojErr err = m_dbClient->delKind(handler->slot(), TombstoneKind);
+		MojExpectNoErr(err);
+		err = handler->wait(m_dbClient->service());
+		MojExpectNoErr(err);
+		MojDbClientTest::TearDown();
+	}
+
+	MojErr del(const MojObject& id, MojUInt32 flags)
+	{
+		MojRefCountedPtr<MojDbClientTestResultHandler> handler(new MojDbClientTestResultHandler);
+		MojErr err = m_dbClient->del(handler->slot(), id, flags);
+		MojErrCheck(err);
+		err = handler->wait(m_dbClient->service());
+		MojErrCheck(err);
+		return handler->database_error();
+	}
+	MojErr del(const MojDbQuery& q, MojUInt32 flags)
+	{
+		MojRefCountedPtr<MojDbClientTestResultHandler> handler(new MojDbClientTestResultHandler);
+		MojErr err = m_dbClient->del(handler->slot(), q, flags);
+		MojErrCheck(err);
+		err = handler->wait(m_dbClient->service());
+		MojErrCheck(err);
+		return handler->database_error();
+	}
+	::testing::AssertionResult isTombstone(const MojObject& results)
+	{
+		if (results.size() != 1)
+			return ::testing::AssertionFailure() << results.size() << " objects found, expected one tombstone";
+		bool deleted = false;
+		if (!results.arrayBegin()->get(MojDb::DelKey, deleted) || !deleted)
+			return ::testing::AssertionFailure() << "the object found is not marked deleted";
+		return ::testing::AssertionSuccess();
+	}
+};
+
+TEST_F(MojDbClientTombstoneTest, delByIdKeepsTombstoneByDefault)
+{
+	MojObject id;
+	MojAssertNoErr(writeTestObj(_T("{\"_kind\":\"LunaDbClientTombstoneTest:1\",\"foo\":\"by_id\"}"), &id));
+	MojAssertNoErr(del(id, MojDbFlagNone));
+
+	MojObject results;
+	MojAssertNoErr(findWithDeleted(m_dbClient.get(), _T("by_id"), results));
+	EXPECT_TRUE(isTombstone(results));
+}
+
+TEST_F(MojDbClientTombstoneTest, delByQueryKeepsTombstoneByDefault)
+{
+	MojAssertNoErr(writeTestObj(_T("{\"_kind\":\"LunaDbClientTombstoneTest:1\",\"foo\":\"by_query\"}")));
+	MojDbQuery q;
+	MojAssertNoErr(q.from(TombstoneKind));
+	MojAssertNoErr(q.where(_T("foo"), MojDbQuery::OpEq, str(_T("by_query"))));
+	MojAssertNoErr(del(q, MojDbFlagNone));
+
+	MojObject results;
+	MojAssertNoErr(findWithDeleted(m_dbClient.get(), _T("by_query"), results));
+	EXPECT_TRUE(isTombstone(results));
+}
+
+TEST_F(MojDbClientTombstoneTest, delWithPurgeLeavesNoTombstone)
+{
+	MojObject id;
+	MojAssertNoErr(writeTestObj(_T("{\"_kind\":\"LunaDbClientTombstoneTest:1\",\"foo\":\"purged\"}"), &id));
+	MojAssertNoErr(del(id, MojDbFlagPurge));
+
+	MojObject results;
+	MojAssertNoErr(findWithDeleted(m_dbClient.get(), _T("purged"), results));
+	EXPECT_EQ(0u, results.size());
+}
