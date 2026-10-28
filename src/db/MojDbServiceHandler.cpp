@@ -243,11 +243,13 @@ MojErr MojDbServiceHandler::handleDel(MojServiceMessage* msg, MojObject& payload
 
 	MojErr err = MojErrNone;
 	MojUInt32 count = 0;
-	MojUInt32 flags = MojDbFlagPurge;
+	MojUInt32 flags = MojDbFlagNone;
 
-	bool purge = true;
-	if (payload.get(MojDbServiceDefs::PurgeKey, purge) && !purge) {
-		flags &= ~(MojDbFlagPurge);
+	// as in Open webOS: keep a tombstone unless purge is asked for, so
+	// incDel watchers (sync, the contacts linker) hear of the delete
+	bool purge = false;
+	if (payload.get(MojDbServiceDefs::PurgeKey, purge) && purge) {
+		flags |= MojDbFlagPurge;
 	}
 
 	MojObject obj;
