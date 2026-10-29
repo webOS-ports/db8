@@ -22,6 +22,9 @@
 #include "core/MojTime.h"
 #include "core/MojObjectBuilder.h"
 
+#include <fcntl.h>
+#include <sys/stat.h>
+
 MojErr MojDb::stats(MojObject& objOut, MojDbReqRef req, bool verify, MojString *pKind)
 {
     LOG_TRACE("Entering function %s", __FUNCTION__);
@@ -375,14 +378,105 @@ MojErr MojDb::dump(const MojChar* path, MojUInt32& countOut, bool incDel, MojDbR
 MojErr MojDb::load(const MojChar* path, MojUInt32& countOut, MojUInt32 flags, MojDbReqRef req)
 {
     LOG_TRACE("Entering function %s", __FUNCTION__);
+
+	return loadFile(path, countOut, flags, req, NULL);
+}
+
+MojErr MojDb::restorePath(const MojChar* dir, const MojString& fileName, MojString& pathOut)
+{
+	LOG_TRACE("Entering function %s", __FUNCTION__);
+	MojAssert(dir);
+
+	// The names come from the backup manifest, which is as untrusted as the
+	// dumps: a bare name inside dir, nothing that walks out of it
+	if (dir[0] != _T('/'))
+		MojErrThrowMsg(MojErrInvalidArg, _T("db: restore directory must be an absolute path"));
+	if (fileName.empty() || MojStrLen(fileName.data()) != fileName.length() ||
+		fileName.find(_T('/')) != MojInvalidIndex ||
+		fileName == _T(".") || fileName == _T(".."))
+		MojErrThrowMsg(MojErrInvalidArg, _T("db: invalid restore file name"));
+
+	MojErr err = pathOut.format(_T("%s/%s"), dir, fileName.data());
+	MojErrCheck(err);
+
+	return MojErrNone;
+}
+
+MojErr MojDb::restore(const MojChar* dir, const MojObject& fileNames, RestoreStats& statsOut, MojDbReqRef req)
+{
+	LOG_TRACE("Entering function %s", __FUNCTION__);
+	MojAssert(dir);
+
+	if (!req->admin()) {
+		LOG_ERROR(MSGID_DB_ADMIN_ERROR, 1,
+				PMLOGKS("data", req->domain().data()),
+				"access denied: 'data' cannot restore db");
+		MojErrThrow(MojErrDbAccessDenied);
+	}
+	if (fileNames.type() != MojObject::TypeArray)
+		MojErrThrowMsg(MojErrInvalidArg, _T("db: restore files must be an array"));
+
+	// check every name before loading anything
+	MojVector<MojString> paths;
+	for (MojObject::ConstArrayIterator i = fileNames.arrayBegin(); i != fileNames.arrayEnd(); ++i) {
+		MojString fileName;
+		MojErr err = i->stringValue(fileName);
+		MojErrCheck(err);
+		MojString path;
+		err = restorePath(dir, fileName, path);
+		MojErrCheck(err);
+		err = paths.push(path);
+		MojErrCheck(err);
+	}
+
+	statsOut = RestoreStats();
+	for (MojVector<MojString>::ConstIterator i = paths.begin(); i != paths.end(); ++i) {
+		MojUInt32 count = 0;
+		MojErr err = loadFile(i->data(), count, MojDbFlagRestore, req, &statsOut);
+		MojErrCheck(err);
+	}
+
+	return MojErrNone;
+}
+
+MojErr MojDb::loadFile(const MojChar* path, MojUInt32& countOut, MojUInt32 flags, MojDbReq& req, RestoreStats* stats)
+{
+    LOG_TRACE("Entering function %s", __FUNCTION__);
 	MojAssert(path);
+
+	const bool restoring = MojFlagGet(flags, MojDbFlagRestore);
+	RestoreStats localStats;
+	RestoreStats* const st = stats ? stats : &localStats;
+	const RestoreStats statsBefore = *st;
 
 	MojErr err = beginReq(req, true);
 	MojErrCheck(err);
 
 	MojFile file;
-	err = file.open(path, MOJ_O_RDONLY);
-	MojErrCheck(err);
+	if (restoring) {
+		// A dump planted in the (user-writable) restore directory must be a
+		// regular file, and not a symlink to one elsewhere. O_NOFOLLOW covers
+		// a swap of the last component after the lstat(); O_NONBLOCK keeps a
+		// FIFO swapped in from blocking the service. Directory components of
+		// path are still followed: the caller owns that directory.
+		struct stat fileStat;
+		if (::lstat(path, &fileStat) != 0)
+			MojErrThrowErrno(_T("lstat"));
+		if (!S_ISREG(fileStat.st_mode))
+			MojErrThrowMsg(MojErrInvalidArg, _T("db: restore file is not a regular file"));
+		int openFlags = MOJ_O_RDONLY;
+#ifdef O_NOFOLLOW
+		openFlags |= O_NOFOLLOW;
+#endif
+#ifdef O_NONBLOCK
+		openFlags |= O_NONBLOCK;
+#endif
+		err = file.open(path, openFlags);
+		MojErrCheck(err);
+	} else {
+		err = file.open(path, MOJ_O_RDONLY);
+		MojErrCheck(err);
+	}
 
 	MojJsonParser parser;
 	parser.begin();
@@ -417,7 +511,10 @@ MojErr MojDb::load(const MojChar* path, MojUInt32& countOut, MojUInt32 flags, Mo
 			MojErrCheck(err);
 			if (parser.finished()) {
 				//store the object
-				err = loadImpl(visitor.object(), flags, req);
+				if (restoring)
+					err = loadRestoreImpl(visitor.object(), req, *st);
+				else
+					err = loadImpl(visitor.object(), flags, req);
 				MojErrCheck(err);
 				countOut++;
 				parser.begin();
@@ -446,13 +543,13 @@ MojErr MojDb::load(const MojChar* path, MojUInt32& countOut, MojUInt32 flags, Mo
 
 					gettimeofday(&transactionStartTime, NULL);
 
-					err = req->end();
+					err = req.end();
 					MojErrCheck(err);
 
-					err = req->endBatch();
+					err = req.endBatch();
 					MojErrCheck(err);
 
-					req->beginBatch(); // beginBatch() invocation for first transaction happened in MojDbServiceHandlerBase::invokeImpl
+					req.beginBatch(); // beginBatch() invocation for first transaction happened in MojDbServiceHandlerBase::invokeImpl
 
 					err = beginReq(req, true);
 					MojErrCheck(err);
@@ -473,16 +570,19 @@ MojErr MojDb::load(const MojChar* path, MojUInt32& countOut, MojUInt32 flags, Mo
 	err = parser.end(visitor);
 	MojErrCheck(err);
 	if (parser.finished()) {
-		err = loadImpl(visitor.object(), flags, req);
+		if (restoring)
+			err = loadRestoreImpl(visitor.object(), req, *st);
+		else
+			err = loadImpl(visitor.object(), flags, req);
 		MojErrCheck(err);
 		countOut++;
 	} else if (bytesRead > 0) {
 		MojErrThrow(MojErrJsonParseEof);
 	}
 
-	err = req->end();
+	err = req.end();
 	MojErrCheck(err);
-	err = req->endBatch(); //double call for commit() isn't a problem
+	err = req.endBatch(); //double call for commit() isn't a problem
 	MojErrCheck(err);
 
 	gettimeofday(&stopTime, NULL);
@@ -496,6 +596,21 @@ MojErr MojDb::load(const MojChar* path, MojUInt32& countOut, MojUInt32 flags, Mo
 
     LOG_DEBUG("[db_mojodb] Loaded %s with %d records in %ldms (%dms of that for %d extra transactions), consuming %d mutexes, afterwards %d are available out of %d\n",
 		path, total, elapsedTimeMS, total_transaction_time, transactions, mutexes_used - orig_mutexes_used, mutexes_free, total_mutexes);
+
+	if (restoring) {
+		// counts only: the records themselves are user data
+		LOG_INFO(MSGID_DB_RESTORE, 9,
+			PMLOGKFV("records", "%u", st->records - statsBefore.records),
+			PMLOGKFV("restored", "%u", st->restored - statsBefore.restored),
+			PMLOGKFV("kinds", "%u", st->kinds - statsBefore.kinds),
+			PMLOGKFV("permissions", "%u", st->permissions - statsBefore.permissions),
+			PMLOGKFV("tombstones", "%u", st->tombstones - statsBefore.tombstones),
+			PMLOGKFV("unknownKind", "%u", st->unknownKind - statsBefore.unknownKind),
+			PMLOGKFV("noBackupKind", "%u", st->noBackupKind - statsBefore.noBackupKind),
+			PMLOGKFV("existing", "%u", st->existing - statsBefore.existing),
+			PMLOGKFV("invalid", "%u", st->invalid - statsBefore.invalid),
+			"restore: loaded a backup dump");
+	}
 
 	return MojErrNone;
 }
@@ -818,6 +933,106 @@ MojErr MojDb::loadImpl(MojObject& obj, MojUInt32 flags, MojDbReq& req)
 			MojErrCheck(err);
 		}
 	}
+	return MojErrNone;
+}
+
+MojErr MojDb::loadRestoreImpl(MojObject& obj, MojDbReq& req, RestoreStats& stats)
+{
+    LOG_TRACE("Entering function %s", __FUNCTION__);
+
+	// A backup dump is unauthenticated input from user-writable storage, and
+	// the restore runs as admin. Unlike loadImpl, it therefore never touches
+	// the schema (Kind:/Permission: records), never deletes, and never writes
+	// over an object that already exists: kinds and permissions come from the
+	// device's own configuration, and a restore only adds the user's objects
+	// back into the kinds that are marked for backup.
+	stats.records++;
+
+	bool found = false;
+	MojString kindName;
+	MojErr err = obj.get(MojDb::KindKey, kindName, found);
+	MojErrCheck(err);
+	if (!found) {
+		stats.invalid++;
+		return MojErrNone;
+	}
+	if (kindName.startsWith(MojDbKindEngine::KindKindIdPrefix)) {
+		stats.kinds++;
+		return MojErrNone;
+	}
+	if (kindName.startsWith(MojDbKindEngine::PermissionIdPrefix)) {
+		stats.permissions++;
+		return MojErrNone;
+	}
+	// A tombstone can only take something away from this device. On a fresh
+	// device there is nothing for it to delete; on a used one it would delete
+	// whatever local object has that _id.
+	bool deleted = false;
+	if (obj.get(MojDb::DelKey, deleted) && deleted) {
+		stats.tombstones++;
+		return MojErrNone;
+	}
+
+	MojDbKind* kind = NULL;
+	err = m_kindEngine.getKind(kindName.data(), kind);
+	MojErrCatchNoLog(err, MojErrDbKindNotRegistered) {
+		stats.unknownKind++;
+		return MojErrNone;
+	}
+	MojErrCheck(err);
+	MojAssert(kind);
+	if (kind->isBuiltin() || !kind->backup()) {
+		stats.noBackupKind++;
+		return MojErrNone;
+	}
+
+	MojObject id;
+	if (obj.get(MojDb::IdKey, id)) {
+		MojString idStr;
+		if (id.type() != MojObject::TypeString || id.stringValue(idStr) != MojErrNone || idStr.empty() ||
+			idStr.startsWith(MojDb::KindIdPrefix) || idStr.startsWith(MojDb::PermissionIdPrefix) ||
+			idStr.startsWith(MojDb::QuotaIdPrefix) || idStr.startsWith(MojDb::DbStateObjId)) {
+			stats.invalid++;
+			return MojErrNone;
+		}
+
+		MojDbShardId shardId;
+		err = MojDbIdGenerator::extractShard(id, shardId);
+		MojErrCheck(err);
+		MojRefCountedPtr<MojDbStorageItem> prevItem;
+		err = m_objDb->get(shardId, id, req.txn(), false, prevItem);
+		MojErrCheck(err);
+		if (prevItem.get()) {
+			// Only a tombstone of the same kind may be brought back; a live
+			// object, or one of any other kind, keeps what this device has.
+			MojObject prev;
+			err = prevItem->toObject(prev, m_kindEngine);
+			MojErrCheck(err);
+			err = prevItem->close();
+			MojErrCheck(err);
+			bool prevDeleted = false;
+			MojString prevKind;
+			bool prevKindFound = false;
+			err = prev.get(MojDb::KindKey, prevKind, prevKindFound);
+			MojErrCheck(err);
+			if (!prev.get(MojDb::DelKey, prevDeleted) || !prevDeleted ||
+				!prevKindFound || prevKind != kindName) {
+				stats.existing++;
+				return MojErrNone;
+			}
+		}
+	}
+
+	// No MojDbFlagForce: the dump carries no _rev, so without force putImpl
+	// refuses to replace a live object. The checks above already skip those,
+	// and dropping any _rev keeps a guessed revision from getting past them.
+	found = false;
+	err = obj.del(MojDb::RevKey, found);
+	MojErrCheck(err);
+	err = putImpl(obj, MojDbFlagRestore, req, false /*checkSchema*/);
+	MojErrCheck(err);
+	stats.restored++;
+
 	return MojErrNone;
 }
 

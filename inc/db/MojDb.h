@@ -78,6 +78,24 @@ public:
 			MojUInt32 maxBytes = 0, const MojObject* incrementalKey = NULL, MojObject* backupResponse = NULL);
 	MojErr load(const MojChar* path, MojUInt32& countOut, MojUInt32 flags = MojDbFlagNone, MojDbReqRef req = MojDbReq());
 
+	// What a restore did with the records of the dumps it was given
+	struct RestoreStats {
+		MojUInt32 records = 0;           // records read
+		MojUInt32 restored = 0;          // objects written
+		MojUInt32 kinds = 0;             // Kind: records, skipped
+		MojUInt32 permissions = 0;       // Permission: records, skipped
+		MojUInt32 tombstones = 0;        // _del records, skipped
+		MojUInt32 unknownKind = 0;       // kind not registered here, skipped
+		MojUInt32 noBackupKind = 0;      // kind built in or not backup-enabled, skipped
+		MojUInt32 existing = 0;          // _id already in use here, skipped
+		MojUInt32 invalid = 0;           // no _kind, bad or reserved _id, skipped
+	};
+	// postRestore: load the backup dumps fileNames (bare names) from the
+	// absolute directory dir with MojDbFlagRestore. A backup is unauthenticated
+	// input, so this only adds objects of registered, backup-enabled kinds.
+	MojErr restore(const MojChar* dir, const MojObject& fileNames, RestoreStats& statsOut, MojDbReqRef req = MojDbReq());
+	static MojErr restorePath(const MojChar* dir, const MojString& fileName, MojString& pathOut);
+
 	MojErr del(const MojObject& id, bool& foundOut, MojUInt32 flags = MojDbFlagNone, MojDbReqRef req = MojDbReq());
 	MojErr del(const MojObject* idsBegin, const MojObject* idsEnd, MojUInt32& countOut, MojObject& arrOut, MojUInt32 flags = MojDbFlagNone, MojDbReqRef req = MojDbReq());
 	MojErr del(const MojDbQuery& query, MojUInt32& countOut, MojUInt32 flags = MojDbFlagNone, MojDbReqRef req = MojDbReq());
@@ -188,6 +206,8 @@ private:
 	MojErr handleBackupFull(const MojObject& revParam, const MojObject& delRevParam, MojObject& response, const MojChar* keyName);
 	MojErr insertIncrementalKey(MojObject& response, const MojChar* keyName, const MojObject& curRev);
 	MojErr loadImpl(MojObject& obj, MojUInt32 flags, MojDbReq& req);
+	MojErr loadFile(const MojChar* path, MojUInt32& countOut, MojUInt32 flags, MojDbReq& req, RestoreStats* stats);
+	MojErr loadRestoreImpl(MojObject& obj, MojDbReq& req, RestoreStats& stats);
 	MojErr purgeImpl(MojObject& obj, MojUInt32& countOut, MojDbReq& req);
 
     MojErr attachShardId(MojString shardId, MojObject& id);
