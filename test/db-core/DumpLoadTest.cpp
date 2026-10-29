@@ -20,6 +20,9 @@
 
 #include "gtest/gtest.h"
 
+#include <set>
+#include <string>
+
 #include "db/MojDb.h"
 #include "core/MojUtil.h"
 
@@ -61,8 +64,14 @@ struct DatabaseSuite : public MojDbCoreTest
     {
         MojDbCoreTest::TearDown();
 
-        MojExpectNoErr( MojUnlink(MojLoadTestFilePath) );
-        MojExpectNoErr( MojUnlink(MojDumpTestFilePath) );
+        // not every test writes both files
+        const MojChar* const paths[] = { MojLoadTestFilePath.data(), MojDumpTestFilePath.data() };
+        for (const MojChar* path : paths) {
+            const MojErr err = MojUnlink(path);
+            if (err != MojErrNotFound) {
+                MojExpectNoErr( err );
+            }
+        }
     }
 
     void checkCount()
@@ -127,4 +136,102 @@ TEST_F(DatabaseSuite, dump_and_load)
     // analyze
     MojObject analysis;
     MojAssertNoErr( db.stats(analysis) );
+}
+
+/**
+ * A backup larger than maxBytes is paged: each page's response carries an
+ * incrementalKey that the caller hands back for the next one, and
+ * preBackup's schema refuses any rev in it below 1. Pages must fill in
+ * both passes - live objects and tombstones - and every key along the way
+ * must be one preBackup accepts, without writing any object twice.
+ */
+TEST_F(DatabaseSuite, backup_pages_carry_valid_incremental_keys)
+{
+    MojObject kind;
+    MojAssertNoErr( kind.fromJson(_T("{\"id\":\"BackupKeyTest:1\",\"owner\":\"mojodb.admin\",\"sync\":true}")) );
+    MojAssertNoErr( db.putKind(kind) );
+
+    const int liveCount = 12;
+    const int deletedCount = 12;
+    MojObject ids[liveCount + deletedCount];
+    for (int i = 0; i < liveCount + deletedCount; ++i) {
+        MojObject obj;
+        MojAssertNoErr( obj.fromJson(_T("{\"_kind\":\"BackupKeyTest:1\",\"pad\":\"0123456789012345678901234567890123456789\"}")) );
+        MojAssertNoErr( obj.put(_T("n"), MojObject(i)) );
+        MojAssertNoErr( db.put(obj) );
+        MojAssertNoErr( obj.getRequired(MojDb::IdKey, ids[i]) );
+    }
+    for (int i = liveCount; i < liveCount + deletedCount; ++i) {
+        bool found = false;
+        MojAssertNoErr( db.del(ids[i], found) );
+        ASSERT_TRUE( found );
+    }
+
+    std::set<MojInt64> liveSeen;
+    std::set<std::string> deletedSeen;
+    MojObject key;
+    bool haveKey = false;
+    int pages = 0;
+    for (;;) {
+        ASSERT_LT( pages, 100 ) << "backup did not terminate";
+        ++pages;
+
+        MojObject response;
+        MojUInt32 count = 0;
+        // Room for two or three objects a page, so both passes overflow.
+        MojAssertNoErr( db.dump(MojDumpTestFilePath, count, true, MojDbReq(), true, 300,
+                                haveKey ? &key : NULL, &response) );
+
+        MojString dumped;
+        MojAssertNoErr( MojFileToString(MojDumpTestFilePath, dumped) );
+        const std::string text(dumped.data());
+        std::string::size_type start = 0;
+        while (start < text.size()) {
+            std::string::size_type end = text.find('\n', start);
+            if (end == std::string::npos)
+                end = text.size();
+            const std::string line = text.substr(start, end - start);
+            start = end + 1;
+            if (line.empty())
+                continue;
+            MojObject obj;
+            MojAssertNoErr( obj.fromJson(line.c_str()) );
+            MojString kindName;
+            bool found = false;
+            MojAssertNoErr( obj.get(MojDb::KindKey, kindName, found) );
+            if (!found || kindName != _T("BackupKeyTest:1"))
+                continue;
+            bool deleted = false;
+            obj.get(MojDb::DelKey, deleted);
+            MojString id;
+            MojAssertNoErr( obj.getRequired(MojDb::IdKey, id) );
+            if (deleted) {
+                EXPECT_TRUE( deletedSeen.insert(id.data()).second ) << "tombstone dumped twice: " << id.data();
+            } else {
+                MojInt64 n = -1;
+                obj.get(_T("n"), n);
+                EXPECT_TRUE( liveSeen.insert(n).second ) << "live object dumped twice: " << n;
+            }
+        }
+
+        bool hasMore = false;
+        response.get(_T("hasMore"), hasMore);
+        if (!hasMore)
+            break;
+
+        ASSERT_TRUE( response.get(_T("incrementalKey"), key) );
+        haveKey = true;
+        const MojChar* const revKeys[] = { _T("rev"), _T("deletedRev") };
+        for (const MojChar* revKey : revKeys) {
+            MojObject rev;
+            if (key.get(revKey, rev)) {
+                EXPECT_GE( rev.intValue(), 1 ) << "page " << pages << " hands back "
+                    << revKey << "=" << rev.intValue() << ", which preBackup's schema refuses";
+            }
+        }
+    }
+
+    EXPECT_GT( pages, 2 ) << "the test needs several pages to mean anything";
+    EXPECT_EQ( static_cast<size_t>(liveCount), liveSeen.size() );
+    EXPECT_EQ( static_cast<size_t>(deletedCount), deletedSeen.size() );
 }

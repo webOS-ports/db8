@@ -748,15 +748,26 @@ MojErr MojDb::handleBackupFull(const MojObject& revParam, const MojObject& delRe
 
 	err = response.put(MojDbServiceDefs::HasMoreKey, true);
 	MojErrCheck(err);
-	if (keyStr == MojDbServiceDefs::RevKey) {
-		err = incremental.put(MojDbServiceDefs::DeletedRevKey, delRevParam);
-		MojErrCheck(err);
-	} else if (keyStr == MojDbServiceDefs::DeletedRevKey) {
-		err = incremental.put(MojDbServiceDefs::RevKey, revParam);
-		MojErrCheck(err);
-	}
 	err = response.put(MojDbServiceDefs::IncrementalKey, incremental);
 	MojErrCheck(err);
+
+	// carry over the other pass's position too. If that pass already ran on this
+	// page - the live pass, when the deleted pass is the one that filled up - it
+	// has recorded where it got to, and putting the param back would rewind it
+	// and dump its last objects again on every remaining page.
+	const MojChar* otherKey = NULL;
+	const MojObject* otherRev = NULL;
+	if (keyStr == MojDbServiceDefs::RevKey) {
+		otherKey = MojDbServiceDefs::DeletedRevKey;
+		otherRev = &delRevParam;
+	} else if (keyStr == MojDbServiceDefs::DeletedRevKey) {
+		otherKey = MojDbServiceDefs::RevKey;
+		otherRev = &revParam;
+	}
+	if (otherKey && !incremental.contains(otherKey)) {
+		err = insertIncrementalKey(response, otherKey, *otherRev);
+		MojErrCheck(err);
+	}
 
 	return MojErrNone;
 }
@@ -768,6 +779,13 @@ MojErr MojDb::insertIncrementalKey(MojObject& response, const MojChar* keyName, 
 	// get the incremental key if it already exists
 	MojObject incremental;
 	(void) response.get(MojDbServiceDefs::IncrementalKey, incremental);
+
+	// dump() starts both revs at -1, meaning "from the beginning". That is not a
+	// rev and preBackup's schema refuses it, so leave the key out instead: a
+	// missing key reads back as -1, which is the same thing.
+	if (curRev.intValue() < 1) {
+		return response.put(MojDbServiceDefs::IncrementalKey, incremental);
+	}
 
 	MojErr err = incremental.put(keyName, curRev);
 	MojErrCheck(err);
