@@ -379,7 +379,130 @@ MojErr MojDb::load(const MojChar* path, MojUInt32& countOut, MojUInt32 flags, Mo
 {
     LOG_TRACE("Entering function %s", __FUNCTION__);
 
-	return loadFile(path, countOut, flags, req, NULL);
+	return loadFile(path, countOut, flags, req, NULL, NULL, 0);
+}
+
+// Directories the service's load method may read from: the temp
+// directories the backup service (woce-backup) works in, the file cache's
+// backuptempdir type and its own fallback. Nothing in the tree calls load
+// with any other path.
+const MojChar* const MojDb::DefaultLoadDirs[] = {
+	_T("/var/file-cache/backuptempdir"),
+	_T("/media/internal/.woce-backup/tmp"),
+};
+const MojSize MojDb::DefaultLoadDirCount = sizeof(MojDb::DefaultLoadDirs) / sizeof(MojDb::DefaultLoadDirs[0]);
+
+MojErr MojDb::loadChecked(const MojString& path, MojUInt32& countOut, MojUInt32 flags, MojDbReqRef req)
+{
+	LOG_TRACE("Entering function %s", __FUNCTION__);
+
+	// The bus method reads the file as this service's (root) user, so the
+	// path is the caller's only to choose within the load directories.
+	if (MojStrLen(path.data()) != path.length())
+		MojErrThrowMsg(MojErrInvalidArg, _T("db: invalid load path"));
+	if (!m_loadDirs || m_loadDirCount == 0)
+		MojErrThrowMsg(MojErrDbAccessDenied, _T("db: no load directories"));
+	return loadFile(path.data(), countOut, flags, req, NULL, m_loadDirs, m_loadDirCount);
+}
+
+namespace {
+
+// Number of path components in dir ("/" is 0, "/a/b" is 2) if path is at
+// or below it on a component boundary, else -1.
+long dirDepth(const MojChar* path, const MojChar* dir)
+{
+	if (!dir || dir[0] != _T('/'))
+		return -1;
+	MojSize len = MojStrLen(dir);
+	while (len > 1 && dir[len - 1] == _T('/'))
+		--len;
+	if (len == 1)
+		return 0;
+	if (MojStrNCmp(path, dir, len) != 0 || (path[len] != _T('\0') && path[len] != _T('/')))
+		return -1;
+	long depth = 0;
+	for (MojSize i = 0; i < len; ++i) {
+		if (dir[i] == _T('/'))
+			++depth;
+	}
+	return depth;
+}
+
+} // namespace
+
+MojErr MojDb::openNoFollow(const MojChar* path, MojSize pathLen, const MojChar* const* allowedDirs, MojSize nAllowedDirs, MojFileT& fdOut)
+{
+	LOG_TRACE("Entering function %s", __FUNCTION__);
+
+	fdOut = MojInvalidFile;
+	if (!path || pathLen == 0 || path[0] != _T('/') || MojStrLen(path) != pathLen || pathLen >= MojPathMax)
+		MojErrThrowMsg(MojErrInvalidArg, _T("db: load path must be an absolute path"));
+
+	// split into components: no empty ones, no "." or "..", and a file name last
+	MojChar copy[MojPathMax];
+	MojStrNCpy(copy, path, pathLen);
+	copy[pathLen] = _T('\0');
+	MojChar* comps[MojPathMax / 2];
+	MojSize nComps = 0;
+	for (MojChar* p = copy + 1; ; ) {
+		MojChar* slash = const_cast<MojChar*>(MojStrChr(p, _T('/')));
+		if (slash)
+			*slash = _T('\0');
+		if (*p == _T('\0') || MojStrCmp(p, _T(".")) == 0 || MojStrCmp(p, _T("..")) == 0)
+			MojErrThrowMsg(MojErrInvalidArg, _T("db: invalid load path"));
+		comps[nComps++] = p;
+		if (!slash)
+			break;
+		p = slash + 1;
+	}
+
+	// below one of the allowed directories (the deepest that matches)
+	long depth = -1;
+	for (MojSize i = 0; i < nAllowedDirs; ++i) {
+		long d = dirDepth(path, allowedDirs[i]);
+		if (d > depth)
+			depth = d;
+	}
+	if (depth < 0 || (MojSize) depth >= nComps)
+		MojErrThrowMsg(MojErrDbAccessDenied, _T("db: load path is outside the allowed directories"));
+
+	// Walk from / one component at a time without following a symbolic
+	// link anywhere, then read only through the fd we opened, so nothing can
+	// be swapped in between the check and the read.
+	int fd = ::open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+	if (fd < 0)
+		MojErrThrowErrno(_T("open"));
+	for (MojSize i = 0; i + 1 < nComps; ++i) {
+		int next = ::openat(fd, comps[i], O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+		if (next < 0) {
+			int e = errno;
+			(void) ::close(fd);
+			if (e == ELOOP || e == ENOTDIR)
+				MojErrThrowMsg(MojErrDbAccessDenied, _T("db: load path has a symbolic link or non-directory component"));
+			errno = e;
+			MojErrThrowErrno(_T("openat"));
+		}
+		(void) ::close(fd);
+		fd = next;
+	}
+	// O_NONBLOCK: a FIFO in its place must not block the service
+	int file = ::openat(fd, comps[nComps - 1], O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_NOCTTY | O_CLOEXEC);
+	int e = errno;
+	(void) ::close(fd);
+	if (file < 0) {
+		if (e == ELOOP)
+			MojErrThrowMsg(MojErrDbAccessDenied, _T("db: load file is a symbolic link"));
+		errno = e;
+		MojErrThrowErrno(_T("openat"));
+	}
+	struct stat st;
+	if (::fstat(file, &st) != 0 || !S_ISREG(st.st_mode)) {
+		(void) ::close(file);
+		MojErrThrowMsg(MojErrDbAccessDenied, _T("db: load file is not a regular file"));
+	}
+	fdOut = file;
+
+	return MojErrNone;
 }
 
 MojErr MojDb::restorePath(const MojChar* dir, const MojString& fileName, MojString& pathOut)
@@ -432,14 +555,15 @@ MojErr MojDb::restore(const MojChar* dir, const MojObject& fileNames, RestoreSta
 	statsOut = RestoreStats();
 	for (MojVector<MojString>::ConstIterator i = paths.begin(); i != paths.end(); ++i) {
 		MojUInt32 count = 0;
-		MojErr err = loadFile(i->data(), count, MojDbFlagRestore, req, &statsOut);
+		MojErr err = loadFile(i->data(), count, MojDbFlagRestore, req, &statsOut, NULL, 0);
 		MojErrCheck(err);
 	}
 
 	return MojErrNone;
 }
 
-MojErr MojDb::loadFile(const MojChar* path, MojUInt32& countOut, MojUInt32 flags, MojDbReq& req, RestoreStats* stats)
+MojErr MojDb::loadFile(const MojChar* path, MojUInt32& countOut, MojUInt32 flags, MojDbReq& req, RestoreStats* stats,
+		const MojChar* const* allowedDirs, MojSize nAllowedDirs)
 {
     LOG_TRACE("Entering function %s", __FUNCTION__);
 	MojAssert(path);
@@ -449,34 +573,30 @@ MojErr MojDb::loadFile(const MojChar* path, MojUInt32& countOut, MojUInt32 flags
 	RestoreStats* const st = stats ? stats : &localStats;
 	const RestoreStats statsBefore = *st;
 
-	MojErr err = beginReq(req, true);
-	MojErrCheck(err);
-
-	MojFile file;
-	if (restoring) {
-		// A dump planted in the (user-writable) restore directory must be a
-		// regular file, and not a symlink to one elsewhere. O_NOFOLLOW covers
-		// a swap of the last component after the lstat(); O_NONBLOCK keeps a
-		// FIFO swapped in from blocking the service. Directory components of
-		// path are still followed: the caller owns that directory.
-		struct stat fileStat;
-		if (::lstat(path, &fileStat) != 0)
-			MojErrThrowErrno(_T("lstat"));
-		if (!S_ISREG(fileStat.st_mode))
-			MojErrThrowMsg(MojErrInvalidArg, _T("db: restore file is not a regular file"));
-		int openFlags = MOJ_O_RDONLY;
-#ifdef O_NOFOLLOW
-		openFlags |= O_NOFOLLOW;
-#endif
-#ifdef O_NONBLOCK
-		openFlags |= O_NONBLOCK;
-#endif
-		err = file.open(path, openFlags);
+	// A restore dump may sit anywhere the caller says, but no component of
+	// its path may be a symbolic link; a load through the service must also
+	// be below one of the load directories (see loadChecked).
+	static const MojChar* const AnyDir[] = {_T("/")};
+	const MojChar* const* dirs = allowedDirs;
+	MojSize nDirs = nAllowedDirs;
+	if (restoring && !dirs) {
+		dirs = AnyDir;
+		nDirs = 1;
+	}
+	MojFileT fd = MojInvalidFile;
+	MojErr err = MojErrNone;
+	if (dirs) {
+		err = openNoFollow(path, MojStrLen(path), dirs, nDirs, fd);
 		MojErrCheck(err);
 	} else {
-		err = file.open(path, MOJ_O_RDONLY);
+		err = MojFileOpen(fd, path, MOJ_O_RDONLY);
 		MojErrCheck(err);
 	}
+	MojFile file(fd);
+
+	// only once the file is open, so a refused path starts no transaction
+	err = beginReq(req, true);
+	MojErrCheck(err);
 
 	MojJsonParser parser;
 	parser.begin();

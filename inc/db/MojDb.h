@@ -95,6 +95,18 @@ public:
 	// input, so this only adds objects of registered, backup-enabled kinds.
 	MojErr restore(const MojChar* dir, const MojObject& fileNames, RestoreStats& statsOut, MojDbReqRef req = MojDbReq());
 	static MojErr restorePath(const MojChar* dir, const MojString& fileName, MojString& pathOut);
+	// The bus "load" method: like load(), but path must be absolute, below one
+	// of the load directories (DefaultLoadDirs unless set), with no symbolic
+	// link or "."/".." in it, and name a regular file.
+	MojErr loadChecked(const MojString& path, MojUInt32& countOut, MojUInt32 flags = MojDbFlagNone, MojDbReqRef req = MojDbReq());
+	static const MojChar* const DefaultLoadDirs[];
+	static const MojSize DefaultLoadDirCount;
+	// dirs must outlive this MojDb
+	void setLoadDirs(const MojChar* const* dirs, MojSize count) { m_loadDirs = dirs; m_loadDirCount = count; }
+	// Opens path read-only for loading: absolute, no NUL, ".", ".." or empty
+	// component, below one of allowedDirs ("/" allows any), every component
+	// opened from / with O_NOFOLLOW, and a regular file at the end.
+	static MojErr openNoFollow(const MojChar* path, MojSize pathLen, const MojChar* const* allowedDirs, MojSize nAllowedDirs, MojFileT& fdOut);
 
 	MojErr del(const MojObject& id, bool& foundOut, MojUInt32 flags = MojDbFlagNone, MojDbReqRef req = MojDbReq());
 	MojErr del(const MojObject* idsBegin, const MojObject* idsEnd, MojUInt32& countOut, MojObject& arrOut, MojUInt32 flags = MojDbFlagNone, MojDbReqRef req = MojDbReq());
@@ -206,7 +218,8 @@ private:
 	MojErr handleBackupFull(const MojObject& revParam, const MojObject& delRevParam, MojObject& response, const MojChar* keyName);
 	MojErr insertIncrementalKey(MojObject& response, const MojChar* keyName, const MojObject& curRev);
 	MojErr loadImpl(MojObject& obj, MojUInt32 flags, MojDbReq& req);
-	MojErr loadFile(const MojChar* path, MojUInt32& countOut, MojUInt32 flags, MojDbReq& req, RestoreStats* stats);
+	MojErr loadFile(const MojChar* path, MojUInt32& countOut, MojUInt32 flags, MojDbReq& req, RestoreStats* stats,
+			const MojChar* const* allowedDirs, MojSize nAllowedDirs);
 	MojErr loadRestoreImpl(MojObject& obj, MojDbReq& req, RestoreStats& stats);
 	MojErr purgeImpl(MojObject& obj, MojUInt32& countOut, MojDbReq& req);
 
@@ -244,6 +257,8 @@ private:
 	MojObject m_conf;
 	MojInt64 m_purgeWindow;
 	MojInt64 m_loadStepSize;
+	const MojChar* const* m_loadDirs;
+	MojSize m_loadDirCount;
 	bool m_isOpen;
     MojString m_databaseId;
     bool m_enableRootKind;

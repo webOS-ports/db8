@@ -62,6 +62,8 @@ MojDb::MojDb()
   m_shardEngine(*this),
   m_purgeWindow(PurgeNumDaysDefault),
   m_loadStepSize(LoadStepSizeDefault),
+  m_loadDirs(DefaultLoadDirs),
+  m_loadDirCount(DefaultLoadDirCount),
   m_isOpen(false),
   m_enableRootKind(true),
 #ifdef LMDB_ENGINE_SUPPORT

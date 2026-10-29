@@ -43,6 +43,7 @@ add_executable(${PROJECT_NAME}
                SimpleWatchTest.cpp
                KindTest.cpp
                RestoreTest.cpp
+               LoadPathTest.cpp
                ../db/MojDbTestStorageEngine.cpp
                ${DB_BACKEND_WRAPPER_SOURCES_CPP})
 
