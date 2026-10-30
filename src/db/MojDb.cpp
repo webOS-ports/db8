@@ -64,6 +64,9 @@ MojDb::MojDb()
   m_loadStepSize(LoadStepSizeDefault),
   m_loadDirs(DefaultLoadDirs),
   m_loadDirCount(DefaultLoadDirCount),
+  m_systemLoadDirs(SystemLoadDirs),
+  m_systemLoadDirCount(SystemLoadDirCount),
+  m_systemLoadOwner(0),
   m_isOpen(false),
   m_enableRootKind(true),
 #ifdef LMDB_ENGINE_SUPPORT

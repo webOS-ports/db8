@@ -384,13 +384,33 @@ MojErr MojDb::load(const MojChar* path, MojUInt32& countOut, MojUInt32 flags, Mo
 
 // Directories the service's load method may read from: the temp
 // directories the backup service (woce-backup) works in, the file cache's
-// backuptempdir type and its own fallback. Nothing in the tree calls load
-// with any other path.
+// backuptempdir type and its own fallback.
 const MojChar* const MojDb::DefaultLoadDirs[] = {
 	_T("/var/file-cache/backuptempdir"),
 	_T("/media/internal/.woce-backup/tmp"),
 };
 const MojSize MojDb::DefaultLoadDirCount = sizeof(MojDb::DefaultLoadDirs) / sizeof(MojDb::DefaultLoadDirs[0]);
+
+// System configuration the image ships, which a system service loads at
+// start: SettingsService loads /etc/palm/defaultSettings.json. Read only from
+// files root alone can have put there (see openNoFollow).
+const MojChar* const MojDb::SystemLoadDirs[] = {
+	_T("/etc/palm"),
+};
+const MojSize MojDb::SystemLoadDirCount = sizeof(MojDb::SystemLoadDirs) / sizeof(MojDb::SystemLoadDirs[0]);
+
+namespace {
+long dirDepth(const MojChar* path, const MojChar* dir);
+
+bool belowAny(const MojChar* path, const MojChar* const* dirs, MojSize count)
+{
+	for (MojSize i = 0; dirs && i < count; ++i) {
+		if (dirDepth(path, dirs[i]) >= 0)
+			return true;
+	}
+	return false;
+}
+} // namespace
 
 MojErr MojDb::loadChecked(const MojString& path, MojUInt32& countOut, MojUInt32 flags, MojDbReqRef req)
 {
@@ -400,9 +420,17 @@ MojErr MojDb::loadChecked(const MojString& path, MojUInt32& countOut, MojUInt32 
 	// path is the caller's only to choose within the load directories.
 	if (MojStrLen(path.data()) != path.length())
 		MojErrThrowMsg(MojErrInvalidArg, _T("db: invalid load path"));
-	if (!m_loadDirs || m_loadDirCount == 0)
+	const bool haveTemp = m_loadDirs && m_loadDirCount > 0;
+	const bool haveSystem = m_systemLoadDirs && m_systemLoadDirCount > 0;
+	if (!haveTemp && !haveSystem)
 		MojErrThrowMsg(MojErrDbAccessDenied, _T("db: no load directories"));
-	return loadFile(path.data(), countOut, flags, req, NULL, m_loadDirs, m_loadDirCount);
+	if (haveSystem && !belowAny(path.data(), m_loadDirs, m_loadDirCount) &&
+		belowAny(path.data(), m_systemLoadDirs, m_systemLoadDirCount)) {
+		return loadFile(path.data(), countOut, flags, req, NULL, m_systemLoadDirs, m_systemLoadDirCount, &m_systemLoadOwner);
+	}
+	// never NULL here: a NULL list means "unrestricted" to loadFile
+	static const MojChar* const NoDirs[] = {NULL};
+	return loadFile(path.data(), countOut, flags, req, NULL, haveTemp ? m_loadDirs : NoDirs, haveTemp ? m_loadDirCount : 0);
 }
 
 namespace {
@@ -430,7 +458,39 @@ long dirDepth(const MojChar* path, const MojChar* dir)
 
 } // namespace
 
-MojErr MojDb::openNoFollow(const MojChar* path, MojSize pathLen, const MojChar* const* allowedDirs, MojSize nAllowedDirs, MojFileT& fdOut)
+// For a system configuration file: owned by root (or the test owner) and
+// writable by nobody else, so only root can have put it or its directories
+// there. A world-writable directory on the way (/tmp) is fine if it is
+// sticky, as nobody else can then rename or replace what root owns in it.
+bool MojDb::trustedLoadDir(uid_t uid, mode_t mode, uid_t owner)
+{
+	if (uid != 0 && uid != owner)
+		return false;
+	return (mode & (S_IWGRP | S_IWOTH)) == 0 || (mode & S_ISVTX) != 0;
+}
+
+bool MojDb::trustedLoadFile(uid_t uid, mode_t mode, uid_t owner)
+{
+	return (uid == 0 || uid == owner) &&
+		(mode & (S_IWGRP | S_IWOTH)) == 0 && (mode & S_IROTH) != 0;
+}
+
+namespace {
+
+MojErr checkTrustedDir(int fd, const uid_t* trustedOwner)
+{
+	if (!trustedOwner)
+		return MojErrNone;
+	struct stat dirStat;
+	if (::fstat(fd, &dirStat) != 0 || !MojDb::trustedLoadDir(dirStat.st_uid, dirStat.st_mode, *trustedOwner))
+		MojErrThrowMsg(MojErrDbAccessDenied, _T("db: load path has a directory that is not root's alone"));
+	return MojErrNone;
+}
+
+} // namespace
+
+MojErr MojDb::openNoFollow(const MojChar* path, MojSize pathLen, const MojChar* const* allowedDirs, MojSize nAllowedDirs, MojFileT& fdOut,
+		const uid_t* trustedOwner)
 {
 	LOG_TRACE("Entering function %s", __FUNCTION__);
 
@@ -472,6 +532,11 @@ MojErr MojDb::openNoFollow(const MojChar* path, MojSize pathLen, const MojChar* 
 	int fd = ::open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
 	if (fd < 0)
 		MojErrThrowErrno(_T("open"));
+	MojErr err = checkTrustedDir(fd, trustedOwner);
+	if (err != MojErrNone) {
+		(void) ::close(fd);
+		return err;
+	}
 	for (MojSize i = 0; i + 1 < nComps; ++i) {
 		int next = ::openat(fd, comps[i], O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
 		if (next < 0) {
@@ -484,6 +549,11 @@ MojErr MojDb::openNoFollow(const MojChar* path, MojSize pathLen, const MojChar* 
 		}
 		(void) ::close(fd);
 		fd = next;
+		err = checkTrustedDir(fd, trustedOwner);
+		if (err != MojErrNone) {
+			(void) ::close(fd);
+			return err;
+		}
 	}
 	// O_NONBLOCK: a FIFO in its place must not block the service
 	int file = ::openat(fd, comps[nComps - 1], O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_NOCTTY | O_CLOEXEC);
@@ -499,6 +569,10 @@ MojErr MojDb::openNoFollow(const MojChar* path, MojSize pathLen, const MojChar* 
 	if (::fstat(file, &st) != 0 || !S_ISREG(st.st_mode)) {
 		(void) ::close(file);
 		MojErrThrowMsg(MojErrDbAccessDenied, _T("db: load file is not a regular file"));
+	}
+	if (trustedOwner && !trustedLoadFile(st.st_uid, st.st_mode, *trustedOwner)) {
+		(void) ::close(file);
+		MojErrThrowMsg(MojErrDbAccessDenied, _T("db: system load file must be root's, read-only to others"));
 	}
 	fdOut = file;
 
@@ -563,7 +637,7 @@ MojErr MojDb::restore(const MojChar* dir, const MojObject& fileNames, RestoreSta
 }
 
 MojErr MojDb::loadFile(const MojChar* path, MojUInt32& countOut, MojUInt32 flags, MojDbReq& req, RestoreStats* stats,
-		const MojChar* const* allowedDirs, MojSize nAllowedDirs)
+		const MojChar* const* allowedDirs, MojSize nAllowedDirs, const uid_t* trustedOwner)
 {
     LOG_TRACE("Entering function %s", __FUNCTION__);
 	MojAssert(path);
@@ -586,7 +660,7 @@ MojErr MojDb::loadFile(const MojChar* path, MojUInt32& countOut, MojUInt32 flags
 	MojFileT fd = MojInvalidFile;
 	MojErr err = MojErrNone;
 	if (dirs) {
-		err = openNoFollow(path, MojStrLen(path), dirs, nDirs, fd);
+		err = openNoFollow(path, MojStrLen(path), dirs, nDirs, fd, trustedOwner);
 		MojErrCheck(err);
 	} else {
 		err = MojFileOpen(fd, path, MOJ_O_RDONLY);
