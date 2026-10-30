@@ -593,7 +593,19 @@ MojErr MojDb::restorePath(const MojChar* dir, const MojString& fileName, MojStri
 		fileName == _T(".") || fileName == _T(".."))
 		MojErrThrowMsg(MojErrInvalidArg, _T("db: invalid restore file name"));
 
-	MojErr err = pathOut.format(_T("%s/%s"), dir, fileName.data());
+	// The backup service passes tempDir with a trailing slash
+	// ("/media/internal/.woce-backup/tmp/"); joined as it is, that makes an
+	// empty component, which openNoFollow refuses. "/" stays "/".
+	MojSize dirLen = MojStrLen(dir);
+	while (dirLen > 1 && dir[dirLen - 1] == _T('/'))
+		--dirLen;
+	MojErr err = pathOut.assign(dir, dirLen);
+	MojErrCheck(err);
+	if (dirLen > 1) {
+		err = pathOut.append(_T('/'));
+		MojErrCheck(err);
+	}
+	err = pathOut.append(fileName);
 	MojErrCheck(err);
 
 	return MojErrNone;

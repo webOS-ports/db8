@@ -333,6 +333,24 @@ TEST_F(RestoreSuite, skipsReservedIds)
 	EXPECT_EQ(0u, count(_T("RestoreTest:1"), _T("evil")));
 }
 
+// woce-backup, like the stock backup service, passes tempDir with a
+// trailing slash; the dump inside it still loads.
+TEST_F(RestoreSuite, acceptsTempDirWithTrailingSlash)
+{
+	writeDump("backup-1.json", "{\"_kind\":\"RestoreTest:1\",\"foo\":\"restored\"}\n");
+
+	MojObject files(MojObject::TypeArray);
+	MojAssertNoErr( files.pushString(_T("backup-1.json")) );
+	MojDb::RestoreStats stats;
+	MojAssertNoErr( db.restore((dir + "/").c_str(), files, stats) );
+	EXPECT_EQ(1u, stats.restored);
+
+	MojDb::RestoreStats stats2;
+	MojAssertNoErr( db.restore((dir + "//").c_str(), files, stats2) );
+	EXPECT_EQ(1u, stats2.restored);
+	EXPECT_EQ(2u, count(_T("RestoreTest:1"), _T("restored")));
+}
+
 // File names are bare names inside tempDir; a bad one rejects the whole
 // call before anything is loaded.
 TEST_F(RestoreSuite, rejectsBadFileNames)
