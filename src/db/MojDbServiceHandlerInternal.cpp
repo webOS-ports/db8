@@ -148,18 +148,12 @@ MojErr MojDbServiceHandlerInternal::handlePostRestore(MojServiceMessage* msg, Mo
 	err = payload.getRequired(MojDbServiceDefs::FilesKey, files);
 	MojErrCheck(err);
 
-	// load each file, in order
-	for (MojObject::ConstArrayIterator i = files.arrayBegin(); i != files.arrayEnd(); ++i) {
-		MojUInt32 count = 0;
-		MojString fileName;
-		err = i->stringValue(fileName);
-		MojErrCheck(err);
-		MojString path;
-		err = path.format(_T("%s/%s"), dir.data(), fileName.data());
-		MojErrCheck(err);
-		err = m_db.load(path, count, MojDbFlagForce, req);
-		MojErrCheck(err);
-	}
+	// The dumps sit on user-writable storage and are not authenticated, so
+	// they are loaded with MojDbFlagRestore, not as a trusted admin load:
+	// bare file names only, and only objects of backup-enabled kinds.
+	MojDb::RestoreStats stats;
+	err = m_db.restore(dir, files, stats, req);
+	MojErrCheck(err);
 
 	err = msg->replySuccess();
 	MojErrCheck(err);

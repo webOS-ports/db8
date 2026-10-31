@@ -38,6 +38,8 @@
 #include "core/MojLogDb8.h"
 #include "core/MojThread.h"
 
+#include <sys/types.h>
+
 class MojDb : private MojNoCopy
 {
 public:
@@ -77,6 +79,52 @@ public:
 	MojErr dump(const MojChar* path, MojUInt32& countOut, bool incDel = true, MojDbReqRef req = MojDbReq(), bool backup = false,
 			MojUInt32 maxBytes = 0, const MojObject* incrementalKey = NULL, MojObject* backupResponse = NULL);
 	MojErr load(const MojChar* path, MojUInt32& countOut, MojUInt32 flags = MojDbFlagNone, MojDbReqRef req = MojDbReq());
+
+	// What a restore did with the records of the dumps it was given
+	struct RestoreStats {
+		MojUInt32 records = 0;           // records read
+		MojUInt32 restored = 0;          // objects written
+		MojUInt32 kinds = 0;             // Kind: records, skipped
+		MojUInt32 permissions = 0;       // Permission: records, skipped
+		MojUInt32 tombstones = 0;        // _del records, skipped
+		MojUInt32 unknownKind = 0;       // kind not registered here, skipped
+		MojUInt32 noBackupKind = 0;      // kind built in or not backup-enabled, skipped
+		MojUInt32 existing = 0;          // _id already in use here, skipped
+		MojUInt32 invalid = 0;           // no _kind, bad or reserved _id, skipped
+	};
+	// postRestore: load the backup dumps fileNames (bare names) from the
+	// absolute directory dir with MojDbFlagRestore. A backup is unauthenticated
+	// input, so this only adds objects of registered, backup-enabled kinds.
+	MojErr restore(const MojChar* dir, const MojObject& fileNames, RestoreStats& statsOut, MojDbReqRef req = MojDbReq());
+	static MojErr restorePath(const MojChar* dir, const MojString& fileName, MojString& pathOut);
+	// The bus "load" method: like load(), but path must be absolute, with no
+	// symbolic link or "."/".." in it, and name a regular file, either below
+	// one of the backup temp directories (DefaultLoadDirs unless set) or below
+	// one of the system configuration directories (SystemLoadDirs unless set).
+	// A system file and every directory on its path must be owned by root
+	// and writable by nobody else, and the file readable by everyone.
+	MojErr loadChecked(const MojString& path, MojUInt32& countOut, MojUInt32 flags = MojDbFlagNone, MojDbReqRef req = MojDbReq());
+	static const MojChar* const DefaultLoadDirs[];
+	static const MojSize DefaultLoadDirCount;
+	static const MojChar* const SystemLoadDirs[];
+	static const MojSize SystemLoadDirCount;
+	// dirs must outlive this MojDb
+	void setLoadDirs(const MojChar* const* dirs, MojSize count) { m_loadDirs = dirs; m_loadDirCount = count; }
+	// owner: the uid besides root that system files may belong to (tests)
+	void setSystemLoadDirs(const MojChar* const* dirs, MojSize count, uid_t owner = 0)
+		{ m_systemLoadDirs = dirs; m_systemLoadDirCount = count; m_systemLoadOwner = owner; }
+	// Opens path read-only for loading: absolute, no NUL, ".", ".." or empty
+	// component, below one of allowedDirs ("/" allows any), every component
+	// opened from / with O_NOFOLLOW, and a regular file at the end. With
+	// trustedOwner, every directory from / and the file must belong to root
+	// or *trustedOwner and not be group- or world-writable (a directory may
+	// be if it is sticky), and the file must be world-readable.
+	static MojErr openNoFollow(const MojChar* path, MojSize pathLen, const MojChar* const* allowedDirs, MojSize nAllowedDirs, MojFileT& fdOut,
+			const uid_t* trustedOwner = NULL);
+	// the ownership and mode rules for a directory on a system file's path,
+	// and for the file
+	static bool trustedLoadDir(uid_t uid, mode_t mode, uid_t owner);
+	static bool trustedLoadFile(uid_t uid, mode_t mode, uid_t owner);
 
 	MojErr del(const MojObject& id, bool& foundOut, MojUInt32 flags = MojDbFlagNone, MojDbReqRef req = MojDbReq());
 	MojErr del(const MojObject* idsBegin, const MojObject* idsEnd, MojUInt32& countOut, MojObject& arrOut, MojUInt32 flags = MojDbFlagNone, MojDbReqRef req = MojDbReq());
@@ -188,6 +236,9 @@ private:
 	MojErr handleBackupFull(const MojObject& revParam, const MojObject& delRevParam, MojObject& response, const MojChar* keyName);
 	MojErr insertIncrementalKey(MojObject& response, const MojChar* keyName, const MojObject& curRev);
 	MojErr loadImpl(MojObject& obj, MojUInt32 flags, MojDbReq& req);
+	MojErr loadFile(const MojChar* path, MojUInt32& countOut, MojUInt32 flags, MojDbReq& req, RestoreStats* stats,
+			const MojChar* const* allowedDirs, MojSize nAllowedDirs, const uid_t* trustedOwner = NULL);
+	MojErr loadRestoreImpl(MojObject& obj, MojDbReq& req, RestoreStats& stats);
 	MojErr purgeImpl(MojObject& obj, MojUInt32& countOut, MojDbReq& req);
 
     MojErr attachShardId(MojString shardId, MojObject& id);
@@ -224,6 +275,11 @@ private:
 	MojObject m_conf;
 	MojInt64 m_purgeWindow;
 	MojInt64 m_loadStepSize;
+	const MojChar* const* m_loadDirs;
+	MojSize m_loadDirCount;
+	const MojChar* const* m_systemLoadDirs;
+	MojSize m_systemLoadDirCount;
+	uid_t m_systemLoadOwner;
 	bool m_isOpen;
     MojString m_databaseId;
     bool m_enableRootKind;
