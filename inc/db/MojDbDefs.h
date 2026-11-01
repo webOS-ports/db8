@@ -83,7 +83,11 @@ enum MojDbFlags {
     MojDbFlagMerge			= (1 << 1),
     MojDbFlagPurge			= (1 << 2),
     MojDbFlagIgnoreMissing	= (1 << 3),
-    MojDbFlagForceNoPurge	= (1 << 4)
+    MojDbFlagForceNoPurge	= (1 << 4),
+    // load() of an untrusted backup dump: only plain objects of registered,
+    // backup-enabled kinds, never kinds, permissions or deletes, and never
+    // over an existing object (see MojDb::restore)
+    MojDbFlagRestore		= (1 << 5)
 };
 
 #endif /* MOJDBDEFS_H_ */

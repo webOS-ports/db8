@@ -85,6 +85,7 @@ public:
 	const KindVec& supers() const { return m_supers; }
 	bool hasPrivateData() const { return m_privateData; }
     bool isBuiltin() const { return m_builtin; }
+	bool backup() const { return m_backup; }
 	MojDbKindEngine* kindEngine() const { return m_kindEngine; }
 	MojInt64 token() const { return m_state->token(); }
 	MojUInt32 version() const { return m_version; }

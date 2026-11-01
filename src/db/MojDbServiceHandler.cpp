@@ -373,7 +373,8 @@ MojErr MojDbServiceHandler::handleLoad(MojServiceMessage* msg, MojObject& payloa
 	MojErrCheck(err);
 
 	MojUInt32 count = 0;
-	err = m_db.load(path, count, MojDbFlagMerge, req);
+	// only from the load directories: the file is read as this service's user
+	err = m_db.loadChecked(path, count, MojDbFlagMerge, req);
 	MojErrCheck(err);
 
 	err = formatCount(msg, count);

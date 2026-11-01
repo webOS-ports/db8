@@ -22,6 +22,9 @@
 #include "core/MojTime.h"
 #include "core/MojObjectBuilder.h"
 
+#include <fcntl.h>
+#include <sys/stat.h>
+
 MojErr MojDb::stats(MojObject& objOut, MojDbReqRef req, bool verify, MojString *pKind)
 {
     LOG_TRACE("Entering function %s", __FUNCTION__);
@@ -375,13 +378,310 @@ MojErr MojDb::dump(const MojChar* path, MojUInt32& countOut, bool incDel, MojDbR
 MojErr MojDb::load(const MojChar* path, MojUInt32& countOut, MojUInt32 flags, MojDbReqRef req)
 {
     LOG_TRACE("Entering function %s", __FUNCTION__);
-	MojAssert(path);
 
-	MojErr err = beginReq(req, true);
+	return loadFile(path, countOut, flags, req, NULL, NULL, 0);
+}
+
+// Directories the service's load method may read from: the temp
+// directories the backup service (woce-backup) works in, the file cache's
+// backuptempdir type and its own fallback.
+const MojChar* const MojDb::DefaultLoadDirs[] = {
+	_T("/var/file-cache/backuptempdir"),
+	_T("/media/internal/.woce-backup/tmp"),
+};
+const MojSize MojDb::DefaultLoadDirCount = sizeof(MojDb::DefaultLoadDirs) / sizeof(MojDb::DefaultLoadDirs[0]);
+
+// System configuration the image ships, which a system service loads at
+// start: SettingsService loads /etc/palm/defaultSettings.json. Read only from
+// files root alone can have put there (see openNoFollow).
+const MojChar* const MojDb::SystemLoadDirs[] = {
+	_T("/etc/palm"),
+};
+const MojSize MojDb::SystemLoadDirCount = sizeof(MojDb::SystemLoadDirs) / sizeof(MojDb::SystemLoadDirs[0]);
+
+namespace {
+long dirDepth(const MojChar* path, const MojChar* dir);
+
+bool belowAny(const MojChar* path, const MojChar* const* dirs, MojSize count)
+{
+	for (MojSize i = 0; dirs && i < count; ++i) {
+		if (dirDepth(path, dirs[i]) >= 0)
+			return true;
+	}
+	return false;
+}
+} // namespace
+
+MojErr MojDb::loadChecked(const MojString& path, MojUInt32& countOut, MojUInt32 flags, MojDbReqRef req)
+{
+	LOG_TRACE("Entering function %s", __FUNCTION__);
+
+	// The bus method reads the file as this service's (root) user, so the
+	// path is the caller's only to choose within the load directories.
+	if (MojStrLen(path.data()) != path.length())
+		MojErrThrowMsg(MojErrInvalidArg, _T("db: invalid load path"));
+	const bool haveTemp = m_loadDirs && m_loadDirCount > 0;
+	const bool haveSystem = m_systemLoadDirs && m_systemLoadDirCount > 0;
+	if (!haveTemp && !haveSystem)
+		MojErrThrowMsg(MojErrDbAccessDenied, _T("db: no load directories"));
+	if (haveSystem && !belowAny(path.data(), m_loadDirs, m_loadDirCount) &&
+		belowAny(path.data(), m_systemLoadDirs, m_systemLoadDirCount)) {
+		return loadFile(path.data(), countOut, flags, req, NULL, m_systemLoadDirs, m_systemLoadDirCount, &m_systemLoadOwner);
+	}
+	// never NULL here: a NULL list means "unrestricted" to loadFile
+	static const MojChar* const NoDirs[] = {NULL};
+	return loadFile(path.data(), countOut, flags, req, NULL, haveTemp ? m_loadDirs : NoDirs, haveTemp ? m_loadDirCount : 0);
+}
+
+namespace {
+
+// Number of path components in dir ("/" is 0, "/a/b" is 2) if path is at
+// or below it on a component boundary, else -1.
+long dirDepth(const MojChar* path, const MojChar* dir)
+{
+	if (!dir || dir[0] != _T('/'))
+		return -1;
+	MojSize len = MojStrLen(dir);
+	while (len > 1 && dir[len - 1] == _T('/'))
+		--len;
+	if (len == 1)
+		return 0;
+	if (MojStrNCmp(path, dir, len) != 0 || (path[len] != _T('\0') && path[len] != _T('/')))
+		return -1;
+	long depth = 0;
+	for (MojSize i = 0; i < len; ++i) {
+		if (dir[i] == _T('/'))
+			++depth;
+	}
+	return depth;
+}
+
+} // namespace
+
+// For a system configuration file: owned by root (or the test owner) and
+// writable by nobody else, so only root can have put it or its directories
+// there. A world-writable directory on the way (/tmp) is fine if it is
+// sticky, as nobody else can then rename or replace what root owns in it.
+bool MojDb::trustedLoadDir(uid_t uid, mode_t mode, uid_t owner)
+{
+	if (uid != 0 && uid != owner)
+		return false;
+	return (mode & (S_IWGRP | S_IWOTH)) == 0 || (mode & S_ISVTX) != 0;
+}
+
+bool MojDb::trustedLoadFile(uid_t uid, mode_t mode, uid_t owner)
+{
+	return (uid == 0 || uid == owner) &&
+		(mode & (S_IWGRP | S_IWOTH)) == 0 && (mode & S_IROTH) != 0;
+}
+
+namespace {
+
+MojErr checkTrustedDir(int fd, const uid_t* trustedOwner)
+{
+	if (!trustedOwner)
+		return MojErrNone;
+	struct stat dirStat;
+	if (::fstat(fd, &dirStat) != 0 || !MojDb::trustedLoadDir(dirStat.st_uid, dirStat.st_mode, *trustedOwner))
+		MojErrThrowMsg(MojErrDbAccessDenied, _T("db: load path has a directory that is not root's alone"));
+	return MojErrNone;
+}
+
+} // namespace
+
+MojErr MojDb::openNoFollow(const MojChar* path, MojSize pathLen, const MojChar* const* allowedDirs, MojSize nAllowedDirs, MojFileT& fdOut,
+		const uid_t* trustedOwner)
+{
+	LOG_TRACE("Entering function %s", __FUNCTION__);
+
+	fdOut = MojInvalidFile;
+	if (!path || pathLen == 0 || path[0] != _T('/') || MojStrLen(path) != pathLen || pathLen >= MojPathMax)
+		MojErrThrowMsg(MojErrInvalidArg, _T("db: load path must be an absolute path"));
+
+	// split into components: no empty ones, no "." or "..", and a file name last
+	MojChar copy[MojPathMax];
+	MojStrNCpy(copy, path, pathLen);
+	copy[pathLen] = _T('\0');
+	MojChar* comps[MojPathMax / 2];
+	MojSize nComps = 0;
+	for (MojChar* p = copy + 1; ; ) {
+		MojChar* slash = const_cast<MojChar*>(MojStrChr(p, _T('/')));
+		if (slash)
+			*slash = _T('\0');
+		if (*p == _T('\0') || MojStrCmp(p, _T(".")) == 0 || MojStrCmp(p, _T("..")) == 0)
+			MojErrThrowMsg(MojErrInvalidArg, _T("db: invalid load path"));
+		comps[nComps++] = p;
+		if (!slash)
+			break;
+		p = slash + 1;
+	}
+
+	// below one of the allowed directories (the deepest that matches)
+	long depth = -1;
+	for (MojSize i = 0; i < nAllowedDirs; ++i) {
+		long d = dirDepth(path, allowedDirs[i]);
+		if (d > depth)
+			depth = d;
+	}
+	if (depth < 0 || (MojSize) depth >= nComps)
+		MojErrThrowMsg(MojErrDbAccessDenied, _T("db: load path is outside the allowed directories"));
+
+	// Walk from / one component at a time without following a symbolic
+	// link anywhere, then read only through the fd we opened, so nothing can
+	// be swapped in between the check and the read.
+	int fd = ::open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+	if (fd < 0)
+		MojErrThrowErrno(_T("open"));
+	MojErr err = checkTrustedDir(fd, trustedOwner);
+	if (err != MojErrNone) {
+		(void) ::close(fd);
+		return err;
+	}
+	for (MojSize i = 0; i + 1 < nComps; ++i) {
+		int next = ::openat(fd, comps[i], O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+		if (next < 0) {
+			int e = errno;
+			(void) ::close(fd);
+			if (e == ELOOP || e == ENOTDIR)
+				MojErrThrowMsg(MojErrDbAccessDenied, _T("db: load path has a symbolic link or non-directory component"));
+			errno = e;
+			MojErrThrowErrno(_T("openat"));
+		}
+		(void) ::close(fd);
+		fd = next;
+		err = checkTrustedDir(fd, trustedOwner);
+		if (err != MojErrNone) {
+			(void) ::close(fd);
+			return err;
+		}
+	}
+	// O_NONBLOCK: a FIFO in its place must not block the service
+	int file = ::openat(fd, comps[nComps - 1], O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_NOCTTY | O_CLOEXEC);
+	int e = errno;
+	(void) ::close(fd);
+	if (file < 0) {
+		if (e == ELOOP)
+			MojErrThrowMsg(MojErrDbAccessDenied, _T("db: load file is a symbolic link"));
+		errno = e;
+		MojErrThrowErrno(_T("openat"));
+	}
+	struct stat st;
+	if (::fstat(file, &st) != 0 || !S_ISREG(st.st_mode)) {
+		(void) ::close(file);
+		MojErrThrowMsg(MojErrDbAccessDenied, _T("db: load file is not a regular file"));
+	}
+	if (trustedOwner && !trustedLoadFile(st.st_uid, st.st_mode, *trustedOwner)) {
+		(void) ::close(file);
+		MojErrThrowMsg(MojErrDbAccessDenied, _T("db: system load file must be root's, read-only to others"));
+	}
+	fdOut = file;
+
+	return MojErrNone;
+}
+
+MojErr MojDb::restorePath(const MojChar* dir, const MojString& fileName, MojString& pathOut)
+{
+	LOG_TRACE("Entering function %s", __FUNCTION__);
+	MojAssert(dir);
+
+	// The names come from the backup manifest, which is as untrusted as the
+	// dumps: a bare name inside dir, nothing that walks out of it
+	if (dir[0] != _T('/'))
+		MojErrThrowMsg(MojErrInvalidArg, _T("db: restore directory must be an absolute path"));
+	if (fileName.empty() || MojStrLen(fileName.data()) != fileName.length() ||
+		fileName.find(_T('/')) != MojInvalidIndex ||
+		fileName == _T(".") || fileName == _T(".."))
+		MojErrThrowMsg(MojErrInvalidArg, _T("db: invalid restore file name"));
+
+	// The backup service passes tempDir with a trailing slash
+	// ("/media/internal/.woce-backup/tmp/"); joined as it is, that makes an
+	// empty component, which openNoFollow refuses. "/" stays "/".
+	MojSize dirLen = MojStrLen(dir);
+	while (dirLen > 1 && dir[dirLen - 1] == _T('/'))
+		--dirLen;
+	MojErr err = pathOut.assign(dir, dirLen);
+	MojErrCheck(err);
+	if (dirLen > 1) {
+		err = pathOut.append(_T('/'));
+		MojErrCheck(err);
+	}
+	err = pathOut.append(fileName);
 	MojErrCheck(err);
 
-	MojFile file;
-	err = file.open(path, MOJ_O_RDONLY);
+	return MojErrNone;
+}
+
+MojErr MojDb::restore(const MojChar* dir, const MojObject& fileNames, RestoreStats& statsOut, MojDbReqRef req)
+{
+	LOG_TRACE("Entering function %s", __FUNCTION__);
+	MojAssert(dir);
+
+	if (!req->admin()) {
+		LOG_ERROR(MSGID_DB_ADMIN_ERROR, 1,
+				PMLOGKS("data", req->domain().data()),
+				"access denied: 'data' cannot restore db");
+		MojErrThrow(MojErrDbAccessDenied);
+	}
+	if (fileNames.type() != MojObject::TypeArray)
+		MojErrThrowMsg(MojErrInvalidArg, _T("db: restore files must be an array"));
+
+	// check every name before loading anything
+	MojVector<MojString> paths;
+	for (MojObject::ConstArrayIterator i = fileNames.arrayBegin(); i != fileNames.arrayEnd(); ++i) {
+		MojString fileName;
+		MojErr err = i->stringValue(fileName);
+		MojErrCheck(err);
+		MojString path;
+		err = restorePath(dir, fileName, path);
+		MojErrCheck(err);
+		err = paths.push(path);
+		MojErrCheck(err);
+	}
+
+	statsOut = RestoreStats();
+	for (MojVector<MojString>::ConstIterator i = paths.begin(); i != paths.end(); ++i) {
+		MojUInt32 count = 0;
+		MojErr err = loadFile(i->data(), count, MojDbFlagRestore, req, &statsOut, NULL, 0);
+		MojErrCheck(err);
+	}
+
+	return MojErrNone;
+}
+
+MojErr MojDb::loadFile(const MojChar* path, MojUInt32& countOut, MojUInt32 flags, MojDbReq& req, RestoreStats* stats,
+		const MojChar* const* allowedDirs, MojSize nAllowedDirs, const uid_t* trustedOwner)
+{
+    LOG_TRACE("Entering function %s", __FUNCTION__);
+	MojAssert(path);
+
+	const bool restoring = MojFlagGet(flags, MojDbFlagRestore);
+	RestoreStats localStats;
+	RestoreStats* const st = stats ? stats : &localStats;
+	const RestoreStats statsBefore = *st;
+
+	// A restore dump may sit anywhere the caller says, but no component of
+	// its path may be a symbolic link; a load through the service must also
+	// be below one of the load directories (see loadChecked).
+	static const MojChar* const AnyDir[] = {_T("/")};
+	const MojChar* const* dirs = allowedDirs;
+	MojSize nDirs = nAllowedDirs;
+	if (restoring && !dirs) {
+		dirs = AnyDir;
+		nDirs = 1;
+	}
+	MojFileT fd = MojInvalidFile;
+	MojErr err = MojErrNone;
+	if (dirs) {
+		err = openNoFollow(path, MojStrLen(path), dirs, nDirs, fd, trustedOwner);
+		MojErrCheck(err);
+	} else {
+		err = MojFileOpen(fd, path, MOJ_O_RDONLY);
+		MojErrCheck(err);
+	}
+	MojFile file(fd);
+
+	// only once the file is open, so a refused path starts no transaction
+	err = beginReq(req, true);
 	MojErrCheck(err);
 
 	MojJsonParser parser;
@@ -417,7 +717,10 @@ MojErr MojDb::load(const MojChar* path, MojUInt32& countOut, MojUInt32 flags, Mo
 			MojErrCheck(err);
 			if (parser.finished()) {
 				//store the object
-				err = loadImpl(visitor.object(), flags, req);
+				if (restoring)
+					err = loadRestoreImpl(visitor.object(), req, *st);
+				else
+					err = loadImpl(visitor.object(), flags, req);
 				MojErrCheck(err);
 				countOut++;
 				parser.begin();
@@ -446,13 +749,13 @@ MojErr MojDb::load(const MojChar* path, MojUInt32& countOut, MojUInt32 flags, Mo
 
 					gettimeofday(&transactionStartTime, NULL);
 
-					err = req->end();
+					err = req.end();
 					MojErrCheck(err);
 
-					err = req->endBatch();
+					err = req.endBatch();
 					MojErrCheck(err);
 
-					req->beginBatch(); // beginBatch() invocation for first transaction happened in MojDbServiceHandlerBase::invokeImpl
+					req.beginBatch(); // beginBatch() invocation for first transaction happened in MojDbServiceHandlerBase::invokeImpl
 
 					err = beginReq(req, true);
 					MojErrCheck(err);
@@ -473,16 +776,19 @@ MojErr MojDb::load(const MojChar* path, MojUInt32& countOut, MojUInt32 flags, Mo
 	err = parser.end(visitor);
 	MojErrCheck(err);
 	if (parser.finished()) {
-		err = loadImpl(visitor.object(), flags, req);
+		if (restoring)
+			err = loadRestoreImpl(visitor.object(), req, *st);
+		else
+			err = loadImpl(visitor.object(), flags, req);
 		MojErrCheck(err);
 		countOut++;
 	} else if (bytesRead > 0) {
 		MojErrThrow(MojErrJsonParseEof);
 	}
 
-	err = req->end();
+	err = req.end();
 	MojErrCheck(err);
-	err = req->endBatch(); //double call for commit() isn't a problem
+	err = req.endBatch(); //double call for commit() isn't a problem
 	MojErrCheck(err);
 
 	gettimeofday(&stopTime, NULL);
@@ -496,6 +802,21 @@ MojErr MojDb::load(const MojChar* path, MojUInt32& countOut, MojUInt32 flags, Mo
 
     LOG_DEBUG("[db_mojodb] Loaded %s with %d records in %ldms (%dms of that for %d extra transactions), consuming %d mutexes, afterwards %d are available out of %d\n",
 		path, total, elapsedTimeMS, total_transaction_time, transactions, mutexes_used - orig_mutexes_used, mutexes_free, total_mutexes);
+
+	if (restoring) {
+		// counts only: the records themselves are user data
+		LOG_INFO(MSGID_DB_RESTORE, 9,
+			PMLOGKFV("records", "%u", st->records - statsBefore.records),
+			PMLOGKFV("restored", "%u", st->restored - statsBefore.restored),
+			PMLOGKFV("kinds", "%u", st->kinds - statsBefore.kinds),
+			PMLOGKFV("permissions", "%u", st->permissions - statsBefore.permissions),
+			PMLOGKFV("tombstones", "%u", st->tombstones - statsBefore.tombstones),
+			PMLOGKFV("unknownKind", "%u", st->unknownKind - statsBefore.unknownKind),
+			PMLOGKFV("noBackupKind", "%u", st->noBackupKind - statsBefore.noBackupKind),
+			PMLOGKFV("existing", "%u", st->existing - statsBefore.existing),
+			PMLOGKFV("invalid", "%u", st->invalid - statsBefore.invalid),
+			"restore: loaded a backup dump");
+	}
 
 	return MojErrNone;
 }
@@ -836,6 +1157,106 @@ MojErr MojDb::loadImpl(MojObject& obj, MojUInt32 flags, MojDbReq& req)
 			MojErrCheck(err);
 		}
 	}
+	return MojErrNone;
+}
+
+MojErr MojDb::loadRestoreImpl(MojObject& obj, MojDbReq& req, RestoreStats& stats)
+{
+    LOG_TRACE("Entering function %s", __FUNCTION__);
+
+	// A backup dump is unauthenticated input from user-writable storage, and
+	// the restore runs as admin. Unlike loadImpl, it therefore never touches
+	// the schema (Kind:/Permission: records), never deletes, and never writes
+	// over an object that already exists: kinds and permissions come from the
+	// device's own configuration, and a restore only adds the user's objects
+	// back into the kinds that are marked for backup.
+	stats.records++;
+
+	bool found = false;
+	MojString kindName;
+	MojErr err = obj.get(MojDb::KindKey, kindName, found);
+	MojErrCheck(err);
+	if (!found) {
+		stats.invalid++;
+		return MojErrNone;
+	}
+	if (kindName.startsWith(MojDbKindEngine::KindKindIdPrefix)) {
+		stats.kinds++;
+		return MojErrNone;
+	}
+	if (kindName.startsWith(MojDbKindEngine::PermissionIdPrefix)) {
+		stats.permissions++;
+		return MojErrNone;
+	}
+	// A tombstone can only take something away from this device. On a fresh
+	// device there is nothing for it to delete; on a used one it would delete
+	// whatever local object has that _id.
+	bool deleted = false;
+	if (obj.get(MojDb::DelKey, deleted) && deleted) {
+		stats.tombstones++;
+		return MojErrNone;
+	}
+
+	MojDbKind* kind = NULL;
+	err = m_kindEngine.getKind(kindName.data(), kind);
+	MojErrCatchNoLog(err, MojErrDbKindNotRegistered) {
+		stats.unknownKind++;
+		return MojErrNone;
+	}
+	MojErrCheck(err);
+	MojAssert(kind);
+	if (kind->isBuiltin() || !kind->backup()) {
+		stats.noBackupKind++;
+		return MojErrNone;
+	}
+
+	MojObject id;
+	if (obj.get(MojDb::IdKey, id)) {
+		MojString idStr;
+		if (id.type() != MojObject::TypeString || id.stringValue(idStr) != MojErrNone || idStr.empty() ||
+			idStr.startsWith(MojDb::KindIdPrefix) || idStr.startsWith(MojDb::PermissionIdPrefix) ||
+			idStr.startsWith(MojDb::QuotaIdPrefix) || idStr.startsWith(MojDb::DbStateObjId)) {
+			stats.invalid++;
+			return MojErrNone;
+		}
+
+		MojDbShardId shardId;
+		err = MojDbIdGenerator::extractShard(id, shardId);
+		MojErrCheck(err);
+		MojRefCountedPtr<MojDbStorageItem> prevItem;
+		err = m_objDb->get(shardId, id, req.txn(), false, prevItem);
+		MojErrCheck(err);
+		if (prevItem.get()) {
+			// Only a tombstone of the same kind may be brought back; a live
+			// object, or one of any other kind, keeps what this device has.
+			MojObject prev;
+			err = prevItem->toObject(prev, m_kindEngine);
+			MojErrCheck(err);
+			err = prevItem->close();
+			MojErrCheck(err);
+			bool prevDeleted = false;
+			MojString prevKind;
+			bool prevKindFound = false;
+			err = prev.get(MojDb::KindKey, prevKind, prevKindFound);
+			MojErrCheck(err);
+			if (!prev.get(MojDb::DelKey, prevDeleted) || !prevDeleted ||
+				!prevKindFound || prevKind != kindName) {
+				stats.existing++;
+				return MojErrNone;
+			}
+		}
+	}
+
+	// No MojDbFlagForce: the dump carries no _rev, so without force putImpl
+	// refuses to replace a live object. The checks above already skip those,
+	// and dropping any _rev keeps a guessed revision from getting past them.
+	found = false;
+	err = obj.del(MojDb::RevKey, found);
+	MojErrCheck(err);
+	err = putImpl(obj, MojDbFlagRestore, req, false /*checkSchema*/);
+	MojErrCheck(err);
+	stats.restored++;
+
 	return MojErrNone;
 }
 
